@@ -7,11 +7,11 @@ import pandas as pd
 
 from bokeh.io import curdoc
 from bokeh.models import (
-    ColumnDataSource, Select, MultiSelect, Toggle,
-    DataTable, TableColumn, NumberFormatter
+    ColumnDataSource, Select, CheckboxButtonGroup, Toggle,
+    DataTable, TableColumn, NumberFormatter, Div
 )
 from bokeh.plotting import figure
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, layout
 from scipy.stats import spearmanr
 
 ###############################################################################
@@ -19,6 +19,7 @@ from scipy.stats import spearmanr
 ###############################################################################
 # S3 bucket name
 S3_BUCKET = "proteindata0"
+
 # We'll look for files matching the pattern: summary_testNNN.txt
 FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
 
@@ -179,11 +180,6 @@ df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","R
 # 4) Bokeh Application
 ###############################################################################
 
-from bokeh.models import ColumnDataSource, Select, MultiSelect, Toggle, DataTable, TableColumn, NumberFormatter
-from bokeh.plotting import figure
-from bokeh.layouts import column, row
-from bokeh.io import curdoc
-
 # (A) ColumnDataSource for the main plot
 source_plot = ColumnDataSource(data=dict(
     x=[],
@@ -194,10 +190,11 @@ source_plot = ColumnDataSource(data=dict(
     evol_frust=[]
 ))
 
-# (B) The figure (fills available space)
+# (B) The figure (fills full width)
 p = figure(
     title="(No Data)",
-    sizing_mode='stretch_both',
+    sizing_mode='stretch_width',  # Make the plot stretch to full width
+    height=600,                   # Adjust height as needed
     tools=["pan","box_zoom","wheel_zoom","reset","save","hover"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
@@ -273,7 +270,7 @@ if df_all_corr.empty:
         TableColumn(field="Pval", title="p-value")
     ]
     source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=300)
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 else:
     source_corr = ColumnDataSource(df_all_corr)
     columns = [
@@ -283,18 +280,9 @@ else:
         TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
     ]
-    data_table = DataTable(columns=columns, source=source_corr, height=300)
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-toggle_table = Toggle(label="Show/Hide Correlation Table", button_type="primary")
-data_table.visible = False
-
-def toggle_table_callback(event):
-    data_table.visible = not data_table.visible
-toggle_table.on_click(toggle_table_callback)
-
-# (E) FILTERS for correlation table
-# Implement MultiSelect widgets for filtering by Test and Metric Pair
-
+# (E) FILTERS for correlation table using CheckboxButtonGroup
 # Prepare options for MultiSelect
 tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
 if not df_all_corr.empty:
@@ -308,24 +296,24 @@ if not df_all_corr.empty:
 else:
     combo_options = []
 
-ms_test_filter = MultiSelect(
-    title="Filter by Protein (test###):",
-    value=tests_in_corr,  # default select all
-    options=tests_in_corr
+# Create CheckboxButtonGroups for tests and metric pairs
+cbg_tests = CheckboxButtonGroup(
+    labels=tests_in_corr,
+    active=list(range(len(tests_in_corr)))  # All active by default
 )
-ms_combo_filter = MultiSelect(
-    title="Filter by Metric Pair:",
-    value=combo_options,  # default select all
-    options=combo_options
+
+cbg_combos = CheckboxButtonGroup(
+    labels=combo_options,
+    active=list(range(len(combo_options)))  # All active by default
 )
 
 def update_corr_filter(attr, old, new):
     """Filter the correlation table based on selected tests and metric pairs."""
     if df_all_corr.empty:
         return
-    # Build mask
-    selected_tests = set(ms_test_filter.value)
-    selected_combos = set(ms_combo_filter.value)
+    # Get selected tests and metric pairs
+    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
+    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
     
     # Create a "combo_str" column for easy filtering
     df_tmp = df_all_corr.copy()
@@ -339,37 +327,57 @@ def update_corr_filter(attr, old, new):
     
     source_corr.data = filtered.to_dict(orient="list")
 
-ms_test_filter.on_change("value", update_corr_filter)
-ms_combo_filter.on_change("value", update_corr_filter)
+cbg_tests.on_change("active", update_corr_filter)
+cbg_combos.on_change("active", update_corr_filter)
 
-# Trigger initial filter
-if not df_all_corr.empty:
-    ms_test_filter.value = tests_in_corr
-    ms_combo_filter.value = combo_options
-    update_corr_filter(None, None, None)
+# (F) Toggle for showing/hiding the correlation table
+toggle_table = Toggle(label="Show/Hide Correlation Table", button_type="primary")
+data_table.visible = False
 
-# (F) Layout
-# Arrange widgets and plot to fill the page
+def toggle_table_callback(event):
+    data_table.visible = not data_table.visible
 
-# Top row: Selection widgets
-selection_widgets = row(select_test, sizing_mode='stretch_width')
+toggle_table.on_click(toggle_table_callback)
 
-# Middle row: Plot
-plot_section = column(selection_widgets, p, sizing_mode='stretch_both')
+# (G) Layout
+# Arrange the layout to have the plot on top and table with filters below
 
-# Bottom row: Toggle button and correlation table with filters
-filters = column(
-    row(ms_test_filter, ms_combo_filter, sizing_mode='stretch_width'),
+# Top section: Selection widgets and plot
+top_section = column(
+    select_test,
+    p,
+    sizing_mode='stretch_width'
+)
+
+# Middle section: Filters and toggle button
+filters_section = column(
+    Div(text="<b>Filter Correlation Table</b>"),
+    row(
+        Div(text="<i>Select Proteins:</i>"),
+        cbg_tests,
+        sizing_mode='stretch_width'
+    ),
+    row(
+        Div(text="<i>Select Metric Pairs:</i>"),
+        cbg_combos,
+        sizing_mode='stretch_width'
+    ),
     toggle_table,
+    sizing_mode='stretch_width'
+)
+
+# Bottom section: Correlation table
+bottom_section = column(
     data_table,
     sizing_mode='stretch_width'
 )
 
-# Final layout: Plot on the left, filters and table on the right
-layout = row(
-    plot_section,
-    filters,
-    sizing_mode='stretch_both'
+# Combine all sections
+layout = column(
+    top_section,
+    filters_section,
+    bottom_section,
+    sizing_mode='stretch_width'
 )
 
 curdoc().add_root(layout)
