@@ -22,8 +22,8 @@ S3_BUCKET = "proteindata0"
 # We'll look for files matching the pattern: summary_testNNN.txt
 FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
 
-# Name of the data subfolder inside your bucket, if any. Otherwise, ""
-S3_PREFIX = ""  # e.g. "data/"
+# Name of the data subfolder inside your bucket
+S3_PREFIX = "summary_data/"  # Updated to reflect the proper data path
 
 ###############################################################################
 # 2) Helpers: S3 + Data Parsing
@@ -128,7 +128,6 @@ def parse_summary_file(local_path):
             corrs[(mA, mB)] = (rho, pval)
     return df_original, df_for_plot, corrs
 
-
 ###############################################################################
 # 3) Load data from S3
 ###############################################################################
@@ -138,8 +137,7 @@ data_by_test = {}
 all_corr_rows = []
 
 for k in s3_keys:
-    # e.g. k might be "summary_test001.txt" or "data/summary_test002.txt" etc.
-    # if there's a subfolder prefix, it might be "data/summary_test001.txt"
+    # e.g. k might be "summary_data/summary_test001.txt"
     filename = os.path.basename(k)  # summary_test001.txt
 
     # Check if it matches summary_testNNN.txt
@@ -176,7 +174,6 @@ for k in s3_keys:
 
 # Build DataFrame of correlations
 df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
-
 
 ###############################################################################
 # 4) Bokeh Application
@@ -228,7 +225,6 @@ p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
-
 # (C) SELECT widget to pick the test### to show
 test_options = sorted(data_by_test.keys())
 select_test = Select(
@@ -267,7 +263,6 @@ select_test.on_change("value", update_plot)
 if test_options:
     select_test.value = test_options[0]  # triggers callback once
 
-
 # (D) CORRELATION TABLE
 if df_all_corr.empty:
     columns = [
@@ -297,16 +292,85 @@ def toggle_table_callback(event):
     data_table.visible = not data_table.visible
 toggle_table.on_click(toggle_table_callback)
 
+# (E) FILTERS for correlation table
+# Implement MultiSelect widgets for filtering by Test and Metric Pair
 
-# (E) FILTERS for correlation table (optional)
-# ...
-# (omitted for brevity; you can add MultiSelect filters if you want as before)
+# Prepare options for MultiSelect
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    # Build a list of "MetricA vs MetricB" strings
+    combo_options = sorted([
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    ])
+    # Remove duplicates
+    combo_options = sorted(list(set(combo_options)))
+else:
+    combo_options = []
 
+ms_test_filter = MultiSelect(
+    title="Filter by Protein (test###):",
+    value=tests_in_corr,  # default select all
+    options=tests_in_corr
+)
+ms_combo_filter = MultiSelect(
+    title="Filter by Metric Pair:",
+    value=combo_options,  # default select all
+    options=combo_options
+)
+
+def update_corr_filter(attr, old, new):
+    """Filter the correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    # Build mask
+    selected_tests = set(ms_test_filter.value)
+    selected_combos = set(ms_combo_filter.value)
+    
+    # Create a "combo_str" column for easy filtering
+    df_tmp = df_all_corr.copy()
+    df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+    
+    # Apply filters
+    filtered = df_tmp[
+        (df_tmp["Test"].isin(selected_tests)) &
+        (df_tmp["combo_str"].isin(selected_combos))
+    ].drop(columns=["combo_str"])
+    
+    source_corr.data = filtered.to_dict(orient="list")
+
+ms_test_filter.on_change("value", update_corr_filter)
+ms_combo_filter.on_change("value", update_corr_filter)
+
+# Trigger initial filter
+if not df_all_corr.empty:
+    ms_test_filter.value = tests_in_corr
+    ms_combo_filter.value = combo_options
+    update_corr_filter(None, None, None)
 
 # (F) Layout
-p_section = column(select_test, p, sizing_mode='stretch_both')
-table_section = column(toggle_table, data_table, sizing_mode='fixed')
+# Arrange widgets and plot to fill the page
 
-layout = row(p_section, table_section, sizing_mode='stretch_both')
+# Top row: Selection widgets
+selection_widgets = row(select_test, sizing_mode='stretch_width')
+
+# Middle row: Plot
+plot_section = column(selection_widgets, p, sizing_mode='stretch_both')
+
+# Bottom row: Toggle button and correlation table with filters
+filters = column(
+    row(ms_test_filter, ms_combo_filter, sizing_mode='stretch_width'),
+    toggle_table,
+    data_table,
+    sizing_mode='stretch_width'
+)
+
+# Final layout: Plot on the left, filters and table on the right
+layout = row(
+    plot_section,
+    filters,
+    sizing_mode='stretch_both'
+)
+
 curdoc().add_root(layout)
 curdoc().title = "Protein Visualization (S3 version)"
