@@ -440,7 +440,7 @@ header = Div(text="""
     </p>
     <h3>Contributors</h3>
     <p>
-        <strong>Adam Kuhna<sup>1,2,3,4</sup>, Vinícius Contessotod<sup>4</sup>, George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
+        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
         <sup>1</sup>Department of Physics, Rice University, 6100 Main St, Houston, TX 77005<br>
         <sup>2</sup>Department of Chemistry, Rice University, 6100 Main St, Houston, TX 77005<br>
         <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
