@@ -8,7 +8,7 @@ import pandas as pd
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup, Toggle,
-    DataTable, TableColumn, NumberFormatter, Div
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
@@ -198,29 +198,81 @@ p = figure(
     title="(No Data)",
     sizing_mode='stretch_width',  # Make the plot stretch to full width
     height=600,                   # Adjust height as needed
-    tools=["pan","box_zoom","wheel_zoom","reset","save","hover"],
+    tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
-p.hover.tooltips = [
-    ("Index", "@x"),
-    ("Residue", "@residue"),
-    ("Value", "@y")
-]
+
+# Define separate HoverTools for each metric
+hover_bf = HoverTool(
+    renderers=[],
+    tooltips=[
+        ("Index", "@x"),
+        ("Residue", "@residue"),
+        ("B-Factor", "@b_factor")
+    ],
+    name="hover_b_factor"
+)
+
+hover_ef = HoverTool(
+    renderers=[],
+    tooltips=[
+        ("Index", "@x"),
+        ("Residue", "@residue"),
+        ("ExpFrust", "@exp_frust")
+    ],
+    name="hover_exp_frust"
+)
+
+hover_af = HoverTool(
+    renderers=[],
+    tooltips=[
+        ("Index", "@x"),
+        ("Residue", "@residue"),
+        ("AFFrust", "@af_frust")
+    ],
+    name="hover_af_frust"
+)
+
+hover_ev = HoverTool(
+    renderers=[],
+    tooltips=[
+        ("Index", "@x"),
+        ("Residue", "@residue"),
+        ("EvolFrust", "@evol_frust")
+    ],
+    name="hover_evol_frust"
+)
+
+# Add HoverTools to the figure
+p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
+
 p.xaxis.axis_label = "Residue Index"
 
-# Add lines for each metric
+# Add lines for each metric and associate HoverTools
 color_map = {
     "b_factor":  ("B-Factor", "#1f77b4"),
     "exp_frust": ("ExpFrust", "#2ca02c"),
     "af_frust":  ("AFFrust",  "#ff7f0e"),
     "evol_frust":("EvolFrust","#d62728")
 }
+renderers = {}
 for col_key, (label, col) in color_map.items():
-    p.line(
+    renderer = p.line(
         x="x", y=col_key, source=source_plot,
         line_width=2, alpha=0.7, color=col,
         legend_label=label
     )
+    renderers[col_key] = renderer
+    # Assign the corresponding HoverTool to this renderer
+    if col_key == "b_factor":
+        hover_bf.renderers.append(renderer)
+    elif col_key == "exp_frust":
+        hover_ef.renderers.append(renderer)
+    elif col_key == "af_frust":
+        hover_af.renderers.append(renderer)
+    elif col_key == "evol_frust":
+        hover_ev.renderers.append(renderer)
+
 p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
@@ -381,12 +433,12 @@ top_section = column(
 filters_section = column(
     Div(text="<b>Filter Correlation Table</b>"),
     row(
-        Div(text="<i>Select Proteins:</i>"),
+        Div(text="<i>Select Proteins:</i>", width=150),
         cbg_tests,
         sizing_mode='stretch_width'
     ),
     row(
-        Div(text="<i>Select Metric Pairs:</i>"),
+        Div(text="<i>Select Metric Pairs:</i>", width=150),
         cbg_combos,
         sizing_mode='stretch_width'
     ),
