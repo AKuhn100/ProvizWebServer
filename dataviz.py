@@ -26,6 +26,9 @@ FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
 # Name of the data subfolder inside your bucket
 S3_PREFIX = "summary_data/"  # Updated to reflect the proper data path
 
+# (Optional) Specify a default test to visualize on startup
+DEFAULT_TEST = "test001"  # Change this to your preferred default test
+
 ###############################################################################
 # 2) Helpers: S3 + Data Parsing
 ###############################################################################
@@ -113,8 +116,8 @@ def parse_summary_file(local_path):
         df_for_plot[col] = moving_average(arr, window_size=5)
 
     # Compute Spearman correlations on NON-smoothed data
-    sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     corrs = {}
+    sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if not sub.empty:
         combos = [
             ("B_Factor", "ExpFrust"),
@@ -224,16 +227,25 @@ p.legend.click_policy = "hide"
 
 # (C) SELECT widget to pick the test### to show
 test_options = sorted(data_by_test.keys())
+
+# Determine the default test to select
+if DEFAULT_TEST in test_options:
+    initial_test = DEFAULT_TEST
+elif test_options:
+    initial_test = test_options[0]
+else:
+    initial_test = ""
+
 select_test = Select(
     title="Select Protein (test###):",
-    value=test_options[0] if test_options else "",
+    value=initial_test,
     options=test_options
 )
 
 def update_plot(attr, old, new):
     td = select_test.value
     if td not in data_by_test:
-        source_plot.data = {}
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = "(No Data)"
         return
     dfp = data_by_test[td]["df_plot"]
@@ -241,7 +253,7 @@ def update_plot(attr, old, new):
     # Filter rows that have no missing data
     sub = dfp.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub.empty:
-        source_plot.data = {}
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = f"{td} (No valid rows)."
         return
 
@@ -257,8 +269,9 @@ def update_plot(attr, old, new):
     p.title.text = f"{td} (Smoothed)"
 
 select_test.on_change("value", update_plot)
-if test_options:
-    select_test.value = test_options[0]  # triggers callback once
+
+# Trigger the callback to populate the plot with the initial selection
+update_plot(None, None, initial_test)
 
 # (D) CORRELATION TABLE
 if df_all_corr.empty:
@@ -299,12 +312,12 @@ else:
 # Create CheckboxButtonGroups for tests and metric pairs
 cbg_tests = CheckboxButtonGroup(
     labels=tests_in_corr,
-    active=list(range(len(tests_in_corr)))  # All active by default
+    active=[]  # No active selections by default
 )
 
 cbg_combos = CheckboxButtonGroup(
     labels=combo_options,
-    active=list(range(len(combo_options)))  # All active by default
+    active=[]  # No active selections by default
 )
 
 def update_corr_filter(attr, old, new):
@@ -315,16 +328,31 @@ def update_corr_filter(attr, old, new):
     selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
     selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
     
-    # Create a "combo_str" column for easy filtering
-    df_tmp = df_all_corr.copy()
-    df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
-    
-    # Apply filters
-    filtered = df_tmp[
-        (df_tmp["Test"].isin(selected_tests)) &
-        (df_tmp["combo_str"].isin(selected_combos))
-    ].drop(columns=["combo_str"])
-    
+    # If no filters are selected, show all data
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        # Create a "combo_str" column for easy filtering
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        
+        # Apply filters
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests))
+            ].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
+
     source_corr.data = filtered.to_dict(orient="list")
 
 cbg_tests.on_change("active", update_corr_filter)
