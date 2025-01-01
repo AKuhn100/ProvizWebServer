@@ -443,42 +443,35 @@ header = Div(text="""
     </p>
 """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
 
-protein_viz_description = Div(
-    text="""
+# (G) Description of the Protein Visualizer
+description_visualizer = Div(text="""
     <h2>Protein Visualizer Instructions</h2>
     <p>
-        Welcome to the Protein Visualizer! This tool allows you to explore the structural and evolutionary properties of proteins interactively. Below are the instructions and explanations of the different metrics:
+        The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
     </p>
     <ul>
-        <li><strong>Oscillation Control:</strong> Press <strong>O</strong> to make the protein ribbon oscillate. The <em>amplitude</em> and <em>frequency</em> of oscillation are mapped to the average <strong>B-Factor</strong> associated with each residue of the protein.</li>
-        <li><strong>Color Representation:</strong> The color of each residue represents its <strong>Experimental Frustration</strong>, calculated by the Frustratometer and compressed into a per-residue metric.</li>
-        <li><strong>Luminosity Representation:</strong> The luminosity of each residue indicates its <strong>Evolutionary Frustration</strong>.</li>
-        <li><strong>Fragmentation:</strong> Press <strong>B</strong> to fragment the protein. Each fragment is plotted on a 3D plot representing the aforementioned metrics.</li>
+        <li><strong>Oscillation:</strong> Pressing <code>o</code> causes the protein ribbon to oscillate. The amplitude and frequency of oscillation are mapped to the average B-factor associated with each residue of the protein.</li>
+        <li><strong>Color Representation:</strong> The color of the protein represents the experimental frustration of each residue, calculated by the Frustratometer and subsequently compressed into a per-residue metric.</li>
+        <li><strong>Luminosity:</strong> The luminosity of each residue represents the evolutionary frustration of that residue.</li>
+        <li><strong>Fragmentation:</strong> Pressing <code>B</code> fragments the protein, and each fragment is plotted on a 3D plot representing the three aforementioned metrics.</li>
         <li><strong>Navigation Controls:</strong>
             <ul>
-                <li><strong>W/A/S/D:</strong> Move forward/left/backward/right.</li>
-                <li><strong>Shift:</strong> Move downward.</li>
-                <li><strong>Space:</strong> Move upward.</li>
-                <li><strong>Hold C:</strong> Zoom the camera in.</li>
-                <li><strong>Hold Left Control:</strong> Increase movement speed.</li>
+                <li><code>W</code>, <code>A</code>, <code>S</code>, <code>D</code>: Move the camera.</li>
+                <li><code>Shift</code>: Move the camera down.</li>
+                <li><code>Space</code>: Move the camera up.</li>
+                <li>Hold <code>C</code>: Zoom the camera in.</li>
+                <li>Hold <code>Left Control</code>: Increase movement speed.</li>
             </ul>
         </li>
-        <li><strong>Protein State:</strong>
+        <li><strong>Folding Controls:</strong>
             <ul>
-                <li>Press <strong>Q</strong> when the protein is in its folded state to unfold it, representing it as a line.</li>
-                <li>Press <strong>E</strong> when the protein is unfolded to refold it.</li>
-                <li>In the unfolded state, the protein can be either <strong>static</strong> or <strong>oscillating</strong> (controlled by <strong>O</strong>). In the oscillating state, the <strong>B-Factor</strong> is mapped by the frequency and amplitude of oscillation, while in the static state, it is mapped by the height of each residue.</li>
+                <li><code>Q</code>: When the protein is in its folded state, pressing <code>Q</code> will unfold the protein and represent it as a line.</li>
+                <li>In the unfolded state, the protein can be either static or oscillating (controlled by <code>O</code>). In the oscillating state, the B-factor is mapped again by the frequency and amplitude of oscillation. In the static state, the B-factor is mapped out by the height of each residue.</li>
             </ul>
         </li>
-        <li><strong>Pause and Select:</strong> Press <strong>P</strong> to pause the visualizer and select another protein.</li>
+        <li><strong>Pause:</strong> Pressing <code>P</code> pauses the visualizer and allows you to select another protein.</li>
     </ul>
-    <p>
-        All functionalities are implemented in the Unity visualizer. Use the navigation controls to explore the protein structures dynamically.
-    </p>
-    """,
-    sizing_mode='stretch_width',
-    styles={'margin-top': '20px', 'margin-bottom': '20px'}
-)
+""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
 
 # (I) Unity iframe with improved styling and without fullscreen toggle
 unity_iframe = Div(
