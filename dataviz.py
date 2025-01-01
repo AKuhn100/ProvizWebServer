@@ -254,7 +254,7 @@ p.yaxis.axis_label = "Normalized Residue Flexibility"
 color_map = {
     "b_factor":  ("B-Factor", "#1f77b4"),
     "exp_frust": ("ExpFrust", "#2ca02c"),
-    "af_frust":  ("AFFrust",  "#ff7f0e"),
+    "af_frust":  ("AFFrust", "#ff7f0e"),
     "evol_frust":("EvolFrust","#d62728")
 }
 renderers = {}
@@ -421,6 +421,28 @@ def toggle_table_callback(event):
 
 toggle_table.on_click(toggle_table_callback)
 
+# Create Unity iframe
+unity_iframe = Div(
+    text="""
+    <iframe 
+        src="https://igotintogradschool2025.site/unity/" 
+        style="width: 100%; height: 800px; border: none;"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen>
+    </iframe>
+    """,
+    sizing_mode='stretch_width'
+)
+unity_iframe.visible = False  # Initially hidden
+
+# Add toggle for Unity viewer
+toggle_unity = Toggle(label="Show/Hide 3D Structure Viewer", button_type="primary")
+
+def toggle_unity_callback(event):
+    unity_iframe.visible = not unity_iframe.visible
+
+toggle_unity.on_click(toggle_unity_callback)
+
 # (G) Header Section
 header = Div(text="""
     <h1>Evolutionary Frustration</h1>
@@ -449,20 +471,19 @@ header = Div(text="""
 """, sizing_mode='stretch_width')
 
 # (H) Layout
-# Arrange the layout to have the header on top, followed by plot and controls
-
-# Top section: Header
-# Middle section: Selection widgets and plot
-top_section = column(
-    header,
+# Visualization section with plot and Unity viewer stacked
+visualization_section = column(
     select_test,
     p,
+    unity_iframe,
     sizing_mode='stretch_width'
 )
 
-# Middle section: Filters and toggle button
-filters_section = column(
-    Div(text="<b>Filter Correlation Table</b>"),
+# Controls section with toggles and filters
+controls_section = column(
+    Div(text="<b>Visualization Controls</b>", style={'font-size': '16px', 'margin': '10px 0'}),
+    row(toggle_unity, toggle_table),
+    Div(text="<b>Filter Correlation Table</b>", style={'font-size': '16px', 'margin': '10px 0'}),
     row(
         Div(text="<i>Select Proteins:</i>", width=150),
         cbg_tests,
@@ -473,21 +494,15 @@ filters_section = column(
         cbg_combos,
         sizing_mode='stretch_width'
     ),
-    toggle_table,
     sizing_mode='stretch_width'
 )
 
-# Bottom section: Correlation table
-bottom_section = column(
-    data_table,
-    sizing_mode='stretch_width'
-)
-
-# Combine all sections
+# Main layout combining all sections
 layout = column(
-    top_section,
-    filters_section,
-    bottom_section,
+    header,
+    visualization_section,
+    controls_section,
+    data_table,
     sizing_mode='stretch_width'
 )
 
