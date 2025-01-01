@@ -173,7 +173,7 @@ for k in s3_keys:
 
     data_by_test[test_name] = {
         "df_original": df_orig,
-        "df_plot": df_plot,
+        "df_for_plot": df_plot,
         "corrs": corrs
     }
 
@@ -362,11 +362,11 @@ else:
     test_color_map = {test: palette[i] for i, test in enumerate(unique_tests)}
     
     # Add a color column based on the test
-    df_all_corr['Color'] = df_all_corr['Test'].map(test_color_map)
+    df_all_corr['Color'] = df_all_corr['Test'].map(test_color_map).fillna("#808080")  # Default to gray if NaN
     
     # Define a saturation adjustment based on the absolute value of Rho
     # Normalize Rho to [0,1] for saturation scaling
-    df_all_corr['Saturation'] = df_all_corr['Rho'].abs()  # [0,1] assuming Rho is between -1 and 1
+    df_all_corr['Saturation'] = df_all_corr['Rho'].abs().fillna(0)  # Replace NaN with 0
     
     # Create a new column with HTML for colored squares with varying saturation
     # We'll adjust the brightness based on saturation (simplest approach)
@@ -375,10 +375,15 @@ else:
         Adjusts the brightness of a hex color by the given factor.
         factor >1 makes it brighter, <1 makes it darker.
         """
-        hex_color = hex_color.lstrip('#')
-        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        adjusted = tuple(min(max(int(c * factor), 0), 255) for c in rgb)
-        return '#{:02x}{:02x}{:02x}'.format(*adjusted)
+        try:
+            hex_color = hex_color.lstrip('#')
+            if len(hex_color) != 6:
+                return "#808080"  # Default to gray for invalid colors
+            rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+            adjusted = tuple(min(max(int(c * factor), 0), 255) for c in rgb)
+            return '#{:02x}{:02x}{:02x}'.format(*adjusted)
+        except:
+            return "#808080"  # Default to gray in case of any error
     
     df_all_corr['Adjusted_Color'] = df_all_corr.apply(
         lambda row: adjust_brightness(row['Color'], 0.5 + 0.5 * row['Saturation']), axis=1
