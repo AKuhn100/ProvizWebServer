@@ -466,6 +466,7 @@ description_visualizer = Div(text="""
         <li><strong>Folding Controls:</strong>
             <ul>
                 <li><code>Q</code>: When the protein is in its folded state, pressing <code>Q</code> will unfold the protein and represent it as a line.</li>
+                <li><code>E</code>: When the protein is in its unfolded state, pressing <code>E</code> will refold the protein back to its original structure.</li>
                 <li>In the unfolded state, the protein can be either static or oscillating (controlled by <code>O</code>). In the oscillating state, the B-factor is mapped again by the frequency and amplitude of oscillation. In the static state, the B-factor is mapped out by the height of each residue.</li>
             </ul>
         </li>
