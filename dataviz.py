@@ -8,11 +8,13 @@ import pandas as pd
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool,
+    HTMLTemplateFormatter
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from scipy.stats import spearmanr
+from bokeh.palettes import Category10, Category20
 
 ###############################################################################
 # 1) Configuration
@@ -343,15 +345,68 @@ if df_all_corr.empty:
     source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 else:
+    # Define a color palette for proteins
+    unique_tests = sorted(df_all_corr["Test"].unique())
+    num_tests = len(unique_tests)
+    # Choose a palette with enough distinct colors
+    if num_tests <= 10:
+        palette = Category10[10]
+    elif num_tests <= 20:
+        palette = Category20[20]
+    else:
+        # Generate more colors if needed
+        from bokeh.palettes import viridis
+        palette = viridis(num_tests)
+    
+    # Map each test to a color
+    test_color_map = {test: palette[i] for i, test in enumerate(unique_tests)}
+    
+    # Add a color column based on the test
+    df_all_corr['Color'] = df_all_corr['Test'].map(test_color_map)
+    
+    # Define a saturation adjustment based on the absolute value of Rho
+    # Normalize Rho to [0,1] for saturation scaling
+    df_all_corr['Saturation'] = df_all_corr['Rho'].abs()  # [0,1] assuming Rho is between -1 and 1
+    
+    # Create a new column with HTML for colored squares with varying saturation
+    # We'll adjust the brightness based on saturation (simplest approach)
+    def adjust_brightness(hex_color, factor):
+        """
+        Adjusts the brightness of a hex color by the given factor.
+        factor >1 makes it brighter, <1 makes it darker.
+        """
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        adjusted = tuple(min(max(int(c * factor), 0), 255) for c in rgb)
+        return '#{:02x}{:02x}{:02x}'.format(*adjusted)
+    
+    df_all_corr['Adjusted_Color'] = df_all_corr.apply(
+        lambda row: adjust_brightness(row['Color'], 0.5 + 0.5 * row['Saturation']), axis=1
+    )
+    
+    # Add a new column for the colored square
+    df_all_corr['Color_Square'] = df_all_corr['Adjusted_Color'].apply(
+        lambda color: f'<div style="width:15px; height:15px; background-color:{color}; border:1px solid #000;"></div>'
+    )
+    
+    # Prepare the data source
     source_corr = ColumnDataSource(df_all_corr)
+    
+    # Define columns, including the colored square
     columns = [
+        TableColumn(field="Color_Square", title="Protein", formatter=HTMLTemplateFormatter(template="""
+            <div style="text-align: center;">
+                <%= Color_Square %>
+            </div>
+        """)),
         TableColumn(field="Test", title="Test"),
         TableColumn(field="MetricA", title="MetricA"),
         TableColumn(field="MetricB", title="MetricB"),
         TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
     ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+    
+    data_table = DataTable(columns=columns, source=source_corr, height=600, width=1200)
 
 # (E) FILTERS for correlation table using CheckboxButtonGroup
 # Prepare options for MultiSelect
@@ -411,39 +466,21 @@ def update_corr_filter(attr, old, new):
         else:
             filtered = df_all_corr
 
+    # Update the data source with filtered data
+    # Recompute Adjusted_Color and Color_Square for the filtered data
+    filtered['Adjusted_Color'] = filtered.apply(
+        lambda row: adjust_brightness(row['Color'], 0.5 + 0.5 * row['Saturation']), axis=1
+    )
+    filtered['Color_Square'] = filtered['Adjusted_Color'].apply(
+        lambda color: f'<div style="width:15px; height:15px; background-color:{color}; border:1px solid #000;"></div>'
+    )
+    
     source_corr.data = filtered.to_dict(orient="list")
 
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# (G) Header Section
-header = Div(text="""
-    <h1>Evolutionary Frustration</h1>
-    <p>
-        This visualization tool leverages multiple sequence alignment (MSA) derived coupling scores and statistical potentials to calculate the mutational frustration of various proteins. By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based frustration metrics, this tool validates the efficacy of evolutionary constraints in representing protein flexibility.
-    </p>
-    <p>
-        The data displayed compare the agreement of different frustration metrics with the experimental B-Factor, which measures the average positional uncertainty of each amino acid derived from crystallographic data. The metrics include:
-    </p>
-    <ul>
-        <li><strong>Experimental Frustration</strong>: Uses the Frustratometer web tool with an experimentally derived protein structure.</li>
-        <li><strong>AF Frustration</strong>: Utilizes a sequence-derived protein structure generated by AlphaFold.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived from evolutionary constraints represented by coupling scores without compressing them into a single structure.</li>
-    </ul>
-    <p>
-        The correlation table below the graphs presents Spearman correlation coefficients and p-values between different metrics using non-smoothed data. Visualized curves are smoothed with a moving average method (window size of 5). Notably, evolutionary frustration shows similar or better agreement with experimental B-Factor compared to the other metrics, likely due to its ability to represent the full ensemble of available protein structures.
-    </p>
-    <h3>Contributors</h3>
-    <p>
-        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
-        <sup>1</sup>Department of Physics, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>2</sup>Department of Chemistry, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>4</sup>Center for Theoretical Biophysics, Rice University, 6100 Main St, Houston, TX 77005
-    </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
-
-# (G) Description of the Protein Visualizer
+# (F) Description of the Protein Visualizer
 description_visualizer = Div(text="""
     <h2>Protein Visualizer Instructions</h2>
     <p>
@@ -497,6 +534,34 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
+# (G) Header Section (remains unchanged)
+header = Div(text="""
+    <h1>Evolutionary Frustration</h1>
+    <p>
+        This visualization tool leverages multiple sequence alignment (MSA) derived coupling scores and statistical potentials to calculate the mutational frustration of various proteins. By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based frustration metrics, this tool validates the efficacy of evolutionary constraints in representing protein flexibility.
+    </p>
+    <p>
+        The data displayed compare the agreement of different frustration metrics with the experimental B-Factor, which measures the average positional uncertainty of each amino acid derived from crystallographic data. The metrics include:
+    </p>
+    <ul>
+        <li><strong>Experimental Frustration</strong>: Uses the Frustratometer web tool with an experimentally derived protein structure.</li>
+        <li><strong>AF Frustration</strong>: Utilizes a sequence-derived protein structure generated by AlphaFold.</li>
+        <li><strong>Evolutionary Frustration</strong>: Derived from evolutionary constraints represented by coupling scores without compressing them into a single structure.</li>
+    </ul>
+    <p>
+        The correlation table below the graphs presents Spearman correlation coefficients and p-values between different metrics using non-smoothed data. Visualized curves are smoothed with a moving average method (window size of 5). Notably, evolutionary frustration shows similar or better agreement with experimental B-Factor compared to the other metrics, likely due to its ability to represent the full ensemble of available protein structures.
+    </p>
+    <h3>Contributors</h3>
+    <p>
+        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
+        <sup>1</sup>Department of Physics, Rice University, 6100 Main St, Houston, TX 77005<br>
+        <sup>2</sup>Department of Chemistry, Rice University, 6100 Main St, Houston, TX 77005<br>
+        <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
+        <sup>4</sup>Center for Theoretical Biophysics, Rice University, 6100 Main St, Houston, TX 77005
+    </p>
+""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
+
+# (H) Layout
 # Visualization section with plot and Unity viewer
 visualization_section = column(
     select_test,
@@ -538,33 +603,6 @@ custom_styles = Div(text="""
         }
     </style>
 """)
-
-# (G) Header Section (remains unchanged)
-header = Div(text="""
-    <h1>Evolutionary Frustration</h1>
-    <p>
-        This visualization tool leverages multiple sequence alignment (MSA) derived coupling scores and statistical potentials to calculate the mutational frustration of various proteins. By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based frustration metrics, this tool validates the efficacy of evolutionary constraints in representing protein flexibility.
-    </p>
-    <p>
-        The data displayed compare the agreement of different frustration metrics with the experimental B-Factor, which measures the average positional uncertainty of each amino acid derived from crystallographic data. The metrics include:
-    </p>
-    <ul>
-        <li><strong>Experimental Frustration</strong>: Uses the Frustratometer web tool with an experimentally derived protein structure.</li>
-        <li><strong>AF Frustration</strong>: Utilizes a sequence-derived protein structure generated by AlphaFold.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived from evolutionary constraints represented by coupling scores without compressing them into a single structure.</li>
-    </ul>
-    <p>
-        The correlation table below the graphs presents Spearman correlation coefficients and p-values between different metrics using non-smoothed data. Visualized curves are smoothed with a moving average method (window size of 5). Notably, evolutionary frustration shows similar or better agreement with experimental B-Factor compared to the other metrics, likely due to its ability to represent the full ensemble of available protein structures.
-    </p>
-    <h3>Contributors</h3>
-    <p>
-        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
-        <sup>1</sup>Department of Physics, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>2</sup>Department of Chemistry, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>4</sup>Center for Theoretical Biophysics, Rice University, 6100 Main St, Houston, TX 77005
-    </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
 
 # Main layout combining all sections
 main_layout = column(
