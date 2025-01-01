@@ -128,7 +128,11 @@ def parse_summary_file(local_path):
             ("AFFrust",  "EvolFrust"),
         ]
         for (mA, mB) in combos:
-            rho, pval = spearmanr(sub[mA], sub[mB])
+            # Handle constant input warnings by checking variance
+            if sub[mA].nunique() < 2 or sub[mB].nunique() < 2:
+                rho, pval = np.nan, np.nan
+            else:
+                rho, pval = spearmanr(sub[mA], sub[mB])
             corrs[(mA, mB)] = (rho, pval)
     return df_original, df_for_plot, corrs
 
@@ -431,7 +435,8 @@ unity_iframe = Div(
         allowfullscreen>
     </iframe>
     """,
-    sizing_mode='stretch_width'
+    sizing_mode='stretch_width',
+    styles={'margin-top': '10px'}  # Example of using 'styles' instead of 'style'
 )
 unity_iframe.visible = False  # Initially hidden
 
@@ -468,7 +473,7 @@ header = Div(text="""
         <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
         <sup>4</sup>Center for Theoretical Biophysics, Rice University, 6100 Main St, Houston, TX 77005
     </p>
-""", sizing_mode='stretch_width')
+""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
 
 # (H) Layout
 # Visualization section with plot and Unity viewer stacked
@@ -481,9 +486,9 @@ visualization_section = column(
 
 # Controls section with toggles and filters
 controls_section = column(
-    Div(text="<b>Visualization Controls</b>", style={'font-size': '16px', 'margin': '10px 0'}),
+    Div(text="<b>Visualization Controls</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
     row(toggle_unity, toggle_table),
-    Div(text="<b>Filter Correlation Table</b>", style={'font-size': '16px', 'margin': '10px 0'}),
+    Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
     row(
         Div(text="<i>Select Proteins:</i>", width=150),
         cbg_tests,
