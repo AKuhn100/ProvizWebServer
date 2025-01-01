@@ -425,15 +425,36 @@ def toggle_table_callback(event):
 
 toggle_table.on_click(toggle_table_callback)
 
-# Create Unity iframe
+# Create Unity iframe with improved styling
 unity_iframe = Div(
     text="""
-    <iframe 
-        src="https://igotintogradschool2025.site/unity/" 
-        style="width: 100%; height: 800px; border: none;"
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen>
-    </iframe>
+    <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
+        <iframe 
+            src="https://igotintogradschool2025.site/unity/" 
+            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen>
+        </iframe>
+    </div>
+    <div style="text-align: center; margin-top: 10px;">
+        <button onclick="toggleFullscreen()" style="padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Toggle Fullscreen
+        </button>
+    </div>
+    <script>
+    function toggleFullscreen() {
+        const iframe = document.querySelector('iframe');
+        if (iframe) {
+            if (iframe.requestFullscreen) {
+                iframe.requestFullscreen();
+            } else if (iframe.webkitRequestFullscreen) { /* Safari */
+                iframe.webkitRequestFullscreen();
+            } else if (iframe.msRequestFullscreen) { /* IE11 */
+                iframe.msRequestFullscreen();
+            }
+        }
+    }
+    </script>
     """,
     sizing_mode='stretch_width',
     styles={'margin-top': '20px'}  # Added top margin for spacing
@@ -441,12 +462,72 @@ unity_iframe = Div(
 unity_iframe.visible = False  # Initially hidden
 
 # Add toggle for Unity viewer
-toggle_unity = Toggle(label="Show/Hide 3D Structure Viewer", button_type="primary")
+toggle_unity = Toggle(
+    label="Show/Hide 3D Structure Viewer", 
+    button_type="primary",
+    width=200  # Fixed width for consistency
+)
 
 def toggle_unity_callback(event):
     unity_iframe.visible = not unity_iframe.visible
 
 toggle_unity.on_click(toggle_unity_callback)
+
+# Modified Layout Structure
+# Create a container for the Unity viewer
+unity_container = column(
+    unity_iframe,
+    sizing_mode='stretch_width'
+)
+
+# Visualization section with plot and Unity viewer
+visualization_section = column(
+    select_test,
+    p,
+    unity_container,
+    sizing_mode='stretch_width',
+    css_classes=['visualization-section']
+)
+
+# Controls section with toggles and filters
+controls_section = column(
+    Div(text="<b>Visualization Controls</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
+    row(
+        toggle_unity, 
+        toggle_table, 
+        sizing_mode='stretch_width',
+        css_classes=['controls-row']
+    ),
+    Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
+    row(
+        Div(text="<i>Select Proteins:</i>", width=150),
+        cbg_tests,
+        sizing_mode='stretch_width'
+    ),
+    row(
+        Div(text="<i>Select Metric Pairs:</i>", width=150),
+        cbg_combos,
+        sizing_mode='stretch_width'
+    ),
+    sizing_mode='stretch_width'
+)
+
+# Add custom CSS styles
+custom_styles = Div(text="""
+    <style>
+        .visualization-section {
+            margin: 20px 0;
+            width: 100%;
+        }
+        .controls-row {
+            margin: 10px 0;
+            gap: 10px;
+        }
+        .bk-root {
+            width: 100% !important;
+        }
+    </style>
+""")
 
 # (G) Header Section
 header = Div(text="""
@@ -476,34 +557,9 @@ header = Div(text="""
 """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
 
 # (H) Layout
-# Visualization section with plot and Unity viewer stacked
-visualization_section = column(
-    select_test,
-    p,
-    unity_iframe,
-    sizing_mode='stretch_width'
-)
-
-# Controls section with toggles and filters
-controls_section = column(
-    Div(text="<b>Visualization Controls</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
-    row(toggle_unity, toggle_table, sizing_mode='stretch_width'),
-    Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
-    row(
-        Div(text="<i>Select Proteins:</i>", width=150),
-        cbg_tests,
-        sizing_mode='stretch_width'
-    ),
-    row(
-        Div(text="<i>Select Metric Pairs:</i>", width=150),
-        cbg_combos,
-        sizing_mode='stretch_width'
-    ),
-    sizing_mode='stretch_width'
-)
-
 # Main layout combining all sections
 main_layout = column(
+    custom_styles,
     header,
     visualization_section,
     controls_section,
@@ -511,5 +567,6 @@ main_layout = column(
     sizing_mode='stretch_width'
 )
 
+# Set the document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
