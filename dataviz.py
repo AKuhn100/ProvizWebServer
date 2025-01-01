@@ -436,7 +436,7 @@ unity_iframe = Div(
     </iframe>
     """,
     sizing_mode='stretch_width',
-    styles={'margin-top': '10px'}  # Example of using 'styles' instead of 'style'
+    styles={'margin-top': '20px'}  # Added top margin for spacing
 )
 unity_iframe.visible = False  # Initially hidden
 
