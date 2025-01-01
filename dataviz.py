@@ -11,7 +11,7 @@ from bokeh.models import (
     DataTable, TableColumn, NumberFormatter, Div, HoverTool
 )
 from bokeh.plotting import figure
-from bokeh.layouts import column, row, layout
+from bokeh.layouts import column, row
 from scipy.stats import spearmanr
 
 ###############################################################################
@@ -487,7 +487,7 @@ visualization_section = column(
 # Controls section with toggles and filters
 controls_section = column(
     Div(text="<b>Visualization Controls</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
-    row(toggle_unity, toggle_table),
+    row(toggle_unity, toggle_table, sizing_mode='stretch_width'),
     Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
     row(
         Div(text="<i>Select Proteins:</i>", width=150),
@@ -503,7 +503,7 @@ controls_section = column(
 )
 
 # Main layout combining all sections
-layout = column(
+main_layout = column(
     header,
     visualization_section,
     controls_section,
@@ -511,5 +511,5 @@ layout = column(
     sizing_mode='stretch_width'
 )
 
-curdoc().add_root(layout)
+curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
