@@ -1,7 +1,5 @@
 import os
 import re
-import boto3
-import tempfile
 import numpy as np
 import pandas as pd
 
@@ -17,61 +15,18 @@ from scipy.stats import spearmanr
 ###############################################################################
 # 1) Configuration
 ###############################################################################
-# S3 bucket name
-S3_BUCKET = "proteindata0"
+# Local data directory path
+DATA_DIR = "summary_data"  # Directory containing the summary files
 
 # We'll look for files matching the pattern: summary_testNNN.txt
 FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
-
-# Name of the data subfolder inside your bucket
-S3_PREFIX = "summary_data/"  # Updated to reflect the proper data path
 
 # (Optional) Specify a default test to visualize on startup
 DEFAULT_TEST = "test001"  # Change this to your preferred default test
 
 ###############################################################################
-# 2) Helpers: S3 + Data Parsing
+# 2) Helpers: Data Parsing
 ###############################################################################
-def list_s3_objects(bucket_name, prefix=""):
-    """
-    List all objects under a given S3 prefix.
-    Returns a list of object keys.
-    """
-    s3 = boto3.client("s3")
-    keys = []
-    continuation_token = None
-
-    while True:
-        if continuation_token:
-            response = s3.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=prefix,
-                ContinuationToken=continuation_token
-            )
-        else:
-            response = s3.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=prefix
-            )
-
-        if "Contents" in response:
-            for obj in response["Contents"]:
-                keys.append(obj["Key"])
-
-        if response.get("IsTruncated"):
-            continuation_token = response.get("NextContinuationToken")
-        else:
-            break
-
-    return keys
-
-def download_s3_file(bucket_name, key, local_path):
-    """
-    Download the S3 object <key> from <bucket_name> to <local_path>.
-    """
-    s3 = boto3.client("s3")
-    s3.download_file(bucket_name, key, local_path)
-
 def moving_average(arr, window_size=5):
     """
     Simple moving average on a float array (np.nan used for missing).
@@ -137,17 +92,13 @@ def parse_summary_file(local_path):
     return df_original, df_for_plot, corrs
 
 ###############################################################################
-# 3) Load data from S3
+# 3) Load data from local directory
 ###############################################################################
-s3_keys = list_s3_objects(S3_BUCKET, prefix=S3_PREFIX)
-
 data_by_test = {}
 all_corr_rows = []
 
-for k in s3_keys:
-    # e.g. k might be "summary_data/summary_test001.txt"
-    filename = os.path.basename(k)  # summary_test001.txt
-
+# List all files in the data directory
+for filename in os.listdir(DATA_DIR):
     # Check if it matches summary_testNNN.txt
     match = re.match(FILE_PATTERN, filename)
     if not match:
@@ -157,14 +108,11 @@ for k in s3_keys:
     test_number = match.group(1)  # e.g. "001"
     test_name = "test" + test_number  # e.g. "test001"
 
-    # Download the file to a temp location
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp_name = tmp.name
-    download_s3_file(S3_BUCKET, k, tmp_name)
+    # Get the full path to the file
+    file_path = os.path.join(DATA_DIR, filename)
 
     # Parse the data
-    df_orig, df_plot, corrs = parse_summary_file(tmp_name)
-    os.remove(tmp_name)  # clean up the local file
+    df_orig, df_plot, corrs = parse_summary_file(file_path)
 
     if df_orig is None:
         continue
