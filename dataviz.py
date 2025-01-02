@@ -399,7 +399,7 @@ description_visualizer = Div(text="""
     </p>
     <ul>
         <li><strong>Oscillation:</strong> Pressing <code>o</code> causes the protein ribbon to oscillate. The amplitude and frequency of oscillation are mapped to the average B-factor associated with each residue of the protein.</li>
-        <li><strong>Color Representation:</strong> The color of the protein represents the experimental frustration of each residue, calculated by the Frustratometer and subsequently compressed into a per-residue metric.</li>
+        <li><strong>Color Representation:</strong> The color of the protein represents the experimental frustration of each residue, calculated by the Frustratometer and subsequently compressed into a per-residue metric. Light blue residues are minimally frustrated, while magenta residues are highly frustrated. The scale can be seen as the axis in the fragmented state (see below).</li>
         <li><strong>Luminosity:</strong> The luminosity of each residue represents the evolutionary frustration of that residue.</li>
         <li><strong>Fragmentation:</strong> Pressing <code>B</code> fragments the protein, and each fragment is plotted on a 3D plot representing the three aforementioned metrics.</li>
         <li><strong>Navigation Controls:</strong>
