@@ -213,17 +213,18 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-# Create figures with dynamic sizing and minimum dimensions
+# Scatter plots configuration with disabled wheel zoom by default
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
-    aspect_ratio=1,  # Keep plots square
-    min_width=350,   # Set minimum width
-    min_height=350,  # Set minimum height
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    active_drag="box_zoom",
+    active_scroll=None  # Disable wheel zoom by default
 )
 p_scatter_af = figure(
     sizing_mode="stretch_both",
@@ -233,8 +234,9 @@ p_scatter_af = figure(
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    active_drag="box_zoom",
+    active_scroll=None  # Disable wheel zoom by default
 )
 p_scatter_evol = figure(
     sizing_mode="stretch_both",
@@ -244,8 +246,9 @@ p_scatter_evol = figure(
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    active_drag="box_zoom",
+    active_scroll=None  # Disable wheel zoom by default
 )
 
 source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
