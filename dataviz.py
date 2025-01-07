@@ -7,7 +7,7 @@ from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
     DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, 
-    Spacer, Panel, Tabs, Box
+    Spacer, Panel, Tabs
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
