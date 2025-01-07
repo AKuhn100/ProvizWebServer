@@ -71,10 +71,8 @@ def parse_summary_file(local_path):
         arr = df_for_plot[col].values
         df_for_plot[col] = moving_average(arr, window_size=5)
 
-    # --------------------------------------------------
     # Skip min–max normalization if column is all-NaNs
     # or if min == max (avoid divide-by-zero).
-    # --------------------------------------------------
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_for_plot[col].values
         valid_mask = ~np.isnan(arr)
@@ -338,47 +336,6 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         </div>
         """
 
-def add_regression_line_and_label(fig, xvals, yvals, color="black"):
-    """Adds a linear regression line and a Label showing slope, intercept, and Pearson's r."""
-    if len(xvals) < 2 or np.all(xvals == xvals[0]):
-        return
-    
-    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
-    if not any(not_nan):
-        return
-    
-    xvals_clean = xvals[not_nan]
-    yvals_clean = yvals[not_nan]
-    if len(xvals_clean) < 2:
-        return
-    
-    # Linear regression
-    m, b = np.polyfit(xvals_clean, yvals_clean, 1)
-    # Pearson correlation for display
-    corr = np.corrcoef(xvals_clean, yvals_clean)[0, 1]
-    
-    # Plot line with a unique name for easy removal later
-    xline = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
-    yline = m*xline + b
-    line_renderer = fig.line(
-        xline, yline,
-        line_width=2, line_dash='dashed', color=color,
-        name="regression_line"
-    )
-    
-    # Label with a unique name for easy removal
-    label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
-    label_obj = Label(
-        x=xvals_clean.min(),
-        y=yvals_clean.max(),
-        text=label_text,
-        text_color=color,
-        text_font_size="10px",
-        text_font_style="bold",
-        name="regression_label"
-    )
-    fig.renderers.append(label_obj)
-
 # Dropdown select
 test_options = sorted(data_by_test.keys())
 if DEFAULT_TEST in test_options:
@@ -396,10 +353,7 @@ select_test = Select(
 
 def update_plot(attr, old, new):
     """
-    Updates both:
-      - The main (smoothed + normalized) line plot
-      - The three scatter plots (non-smoothed + non-normalized)
-    whenever a new test is selected.
+    Updates both the main plot and scatter plots when a new test is selected.
     """
     td = select_test.value
     if td not in data_by_test:
@@ -416,7 +370,7 @@ def update_plot(attr, old, new):
         regression_info_evol.text = ""
         return
     
-    # --- Update main line plot (smoothed + normalized) ---
+    # Update main line plot (smoothed + normalized)
     dfp = data_by_test[td]["df_plot"]
     sub_plot = dfp.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
@@ -434,36 +388,24 @@ def update_plot(attr, old, new):
         source_plot.data = new_data
         p.title.text = f"{td} (Smoothed + Normalized)"
     
-    # --- Update scatter plots (non-smoothed + non-normalized) ---
+    # Update scatter plots
     df_orig = data_by_test[td]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
-    # For each scatter figure, remove old regression lines & Divs
-    for fig, info_div in [
-        (p_scatter_exp, regression_info_exp),
-        (p_scatter_af, regression_info_af),
-        (p_scatter_evol, regression_info_evol)
-    ]:
-        # Remove old lines named "regression_line"
+    # For each scatter figure, remove old regression lines
+    for fig in [p_scatter_exp, p_scatter_af, p_scatter_evol]:
         old_lines = fig.select({'type': GlyphRenderer, 'name': 'regression_line'})
         for line in old_lines:
             if line in fig.renderers:
                 fig.renderers.remove(line)
-        # Remove old labels named "regression_label"
-        old_labels = fig.select({'type': Label, 'name': 'regression_label'})
-        for lbl in old_labels:
-            if lbl in fig.renderers:
-                fig.renderers.remove(lbl)
-        # Reset regression info Div
-        info_div.text = ""
-    
+
     if sub_orig.empty:
         source_scatter_exp.data = dict(x=[], y=[])
         source_scatter_af.data = dict(x=[], y=[])
         source_scatter_evol.data = dict(x=[], y=[])
         p_scatter_exp.title.text = f"{td} (No Data)"
-        p_scatter_af.title.text  = f"{td} (No Data)"
-        p_scatter_evol.title.text= f"{td} (No Data)"
+        p_scatter_af.title.text = f"{td} (No Data)"
+        p_scatter_evol.title.text = f"{td} (No Data)"
         regression_info_exp.text = ""
         regression_info_af.text = ""
         regression_info_evol.text = ""
@@ -563,7 +505,20 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# (G) Header and description
+# Create scatter plot columns with regression info
+scatter_col_exp = column(p_scatter_exp, regression_info_exp)
+scatter_col_af = column(p_scatter_af, regression_info_af)
+scatter_col_evol = column(p_scatter_evol, regression_info_evol)
+
+# Update scatter plots row
+scatter_row = row(
+    scatter_col_exp,
+    scatter_col_af,
+    scatter_col_evol,
+    sizing_mode="stretch_width"
+)
+
+# Add header and description
 header = Div(text="""
     <h1>Evolutionary Frustration</h1>
     <p>
@@ -594,6 +549,7 @@ header = Div(text="""
     </p>
 """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
 
+# Unity Container
 description_visualizer = Div(text="""
     <h2>Protein Visualizer Instructions</h2>
     <p>
@@ -633,28 +589,7 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
-# Create scatter plot columns with regression info
-scatter_col_exp = column(p_scatter_exp, regression_info_exp)
-scatter_col_af = column(p_scatter_af, regression_info_af)
-scatter_col_evol = column(p_scatter_evol, regression_info_evol)
-
-# Update scatter plots row
-scatter_row = row(
-    scatter_col_exp,
-    scatter_col_af,
-    scatter_col_evol,
-    sizing_mode="stretch_width"
-)
-
-visualization_section = column(
-    select_test,
-    p,
-    scatter_row,
-    unity_container,
-    sizing_mode='stretch_width',
-    css_classes=['visualization-section']
-)
-
+# Controls section
 controls_section = column(
     Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
     row(
@@ -670,6 +605,7 @@ controls_section = column(
     sizing_mode='stretch_width'
 )
 
+# Custom styles
 custom_styles = Div(text="""
     <style>
         .visualization-section {
@@ -686,6 +622,16 @@ custom_styles = Div(text="""
     </style>
 """)
 
+# Main layout
+visualization_section = column(
+    select_test,
+    p,
+    scatter_row,
+    unity_container,
+    sizing_mode='stretch_width',
+    css_classes=['visualization-section']
+)
+
 main_layout = column(
     custom_styles,
     header,
@@ -695,5 +641,6 @@ main_layout = column(
     sizing_mode='stretch_width'
 )
 
+# Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
