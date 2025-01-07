@@ -6,7 +6,7 @@ import pandas as pd
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
@@ -61,7 +61,7 @@ def parse_summary_file(local_path):
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         df[col] = df[col].apply(lambda x: np.nan if str(x).lower()=='n/a' else float(x))
 
-    # Non-smoothed for correlation & scatter plots
+    # Non-smoothed for correlation
     df_original = df.copy()
 
     # Smoothed for plotting
@@ -69,20 +69,6 @@ def parse_summary_file(local_path):
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_for_plot[col].values
         df_for_plot[col] = moving_average(arr, window_size=5)
-
-    # --------------------------------------------------
-    # Skip min–max normalization if column is all-NaNs
-    # or if min == max (avoid divide-by-zero).
-    # --------------------------------------------------
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_for_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue  # All values are NaN; skip
-        col_min = np.nanmin(arr)
-        col_max = np.nanmax(arr)
-        if col_max > col_min:
-            df_for_plot[col] = (arr - col_min) / (col_max - col_min)
 
     # Compute Spearman correlations on NON-smoothed data
     corrs = {}
@@ -127,6 +113,7 @@ for filename in os.listdir(DATA_DIR):
 
     # Parse the data
     df_orig, df_plot, corrs = parse_summary_file(file_path)
+
     if df_orig is None:
         continue
 
@@ -147,6 +134,8 @@ df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","R
 ###############################################################################
 # 4) Bokeh Application
 ###############################################################################
+
+# (A) ColumnDataSource for the main plot
 source_plot = ColumnDataSource(data=dict(
     x=[],
     residue=[],
@@ -156,10 +145,11 @@ source_plot = ColumnDataSource(data=dict(
     evol_frust=[]
 ))
 
+# (B) The figure (fills full width)
 p = figure(
     title="(No Data)",
-    sizing_mode='stretch_width',
-    height=600,
+    sizing_mode='stretch_width',  # Make the plot stretch to full width
+    height=600,                   # Adjust height as needed
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
@@ -174,6 +164,7 @@ hover_bf = HoverTool(
     ],
     name="hover_b_factor"
 )
+
 hover_ef = HoverTool(
     renderers=[],
     tooltips=[
@@ -183,6 +174,7 @@ hover_ef = HoverTool(
     ],
     name="hover_exp_frust"
 )
+
 hover_af = HoverTool(
     renderers=[],
     tooltips=[
@@ -192,6 +184,7 @@ hover_af = HoverTool(
     ],
     name="hover_af_frust"
 )
+
 hover_ev = HoverTool(
     renderers=[],
     tooltips=[
@@ -202,11 +195,14 @@ hover_ev = HoverTool(
     name="hover_evol_frust"
 )
 
+# Add HoverTools to the figure
 p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
-p.xaxis.axis_label = "Residue Index"
-p.yaxis.axis_label = "Normalized Residue Flexibility / Frustration"
 
-# Add lines
+# Set axes labels
+p.xaxis.axis_label = "Residue Index"
+p.yaxis.axis_label = "Normalized Residue Flexibility"
+
+# Add lines for each metric and associate HoverTools
 color_map = {
     "b_factor":  ("B-Factor", "#1f77b4"),
     "exp_frust": ("ExpFrust", "#2ca02c"),
@@ -221,6 +217,7 @@ for col_key, (label, col) in color_map.items():
         legend_label=label
     )
     renderers[col_key] = renderer
+    # Assign the corresponding HoverTool to this renderer
     if col_key == "b_factor":
         hover_bf.renderers.append(renderer)
     elif col_key == "exp_frust":
@@ -234,81 +231,10 @@ p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
-# --- Three scatter plots (NON-NORMALIZED) ---
-p_scatter_exp = figure(
-    width=300,
-    height=300,
-    title="",
-    x_axis_label="B-Factor",
-    y_axis_label="ExpFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
-)
-p_scatter_af = figure(
-    width=300,
-    height=300,
-    title="",
-    x_axis_label="B-Factor",
-    y_axis_label="AFFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
-)
-p_scatter_evol = figure(
-    width=300,
-    height=300,
-    title="",
-    x_axis_label="B-Factor",
-    y_axis_label="EvolFrust",
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
-)
-
-source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
-source_scatter_af = ColumnDataSource(data=dict(x=[], y=[]))
-source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[]))
-
-r_scatter_exp = p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#2ca02c", alpha=0.7)
-r_scatter_af  = p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#ff7f0e", alpha=0.7)
-r_scatter_evol= p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#d62728", alpha=0.7)
-
-def add_regression_line_and_label(fig, xvals, yvals, color="black"):
-    """Adds a linear regression line and a Label showing slope, intercept, and Pearson's r."""
-    if len(xvals) < 2 or np.all(xvals == xvals[0]):
-        return
-    
-    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
-    if not any(not_nan):
-        return
-    
-    xvals_clean = xvals[not_nan]
-    yvals_clean = yvals[not_nan]
-    if len(xvals_clean) < 2:
-        return
-    
-    # Linear regression
-    m, b = np.polyfit(xvals_clean, yvals_clean, 1)
-    # Pearson correlation for display
-    corr = np.corrcoef(xvals_clean, yvals_clean)[0, 1]
-    
-    # Plot line
-    xline = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
-    yline = m*xline + b
-    fig.line(xline, yline, line_width=2, line_dash='dashed', color=color)
-    
-    # Label
-    label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
-    label_obj = Label(
-        x=xvals_clean.min(),
-        y=yvals_clean.max(),
-        text=label_text,
-        text_color=color,
-        text_font_size="10px",
-        text_font_style="bold"
-    )
-    fig.renderers.append(label_obj)
-
-# Dropdown select
+# (C) SELECT widget to pick the test### to show
 test_options = sorted(data_by_test.keys())
+
+# Determine the default test to select
 if DEFAULT_TEST in test_options:
     initial_test = DEFAULT_TEST
 elif test_options:
@@ -323,83 +249,34 @@ select_test = Select(
 )
 
 def update_plot(attr, old, new):
-    """
-    Updates both:
-      - The main (smoothed + normalized) line plot
-      - The three scatter plots (non-smoothed + non-normalized)
-    whenever a new test is selected.
-    """
     td = select_test.value
     if td not in data_by_test:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        source_scatter_exp.data = dict(x=[], y=[])
-        source_scatter_af.data = dict(x=[], y=[])
-        source_scatter_evol.data = dict(x=[], y=[])
         p.title.text = "(No Data)"
-        p_scatter_exp.title.text = ""
-        p_scatter_af.title.text = ""
-        p_scatter_evol.title.text = ""
         return
-    
-    # --- Update main line plot (smoothed + normalized) ---
     dfp = data_by_test[td]["df_plot"]
-    sub_plot = dfp.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    if sub_plot.empty:
+
+    # Filter rows that have no missing data
+    sub = dfp.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    if sub.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = f"{td} (No valid rows)."
-    else:
-        new_data = dict(
-            x=sub_plot["AlnIndex"].tolist(),
-            residue=sub_plot["Residue"].tolist(),
-            b_factor=sub_plot["B_Factor"].tolist(),
-            exp_frust=sub_plot["ExpFrust"].tolist(),
-            af_frust=sub_plot["AFFrust"].tolist(),
-            evol_frust=sub_plot["EvolFrust"].tolist()
-        )
-        source_plot.data = new_data
-        p.title.text = f"{td} (Smoothed + Normalized)"
-    
-    # --- Update scatter plots (non-smoothed + non-normalized) ---
-    df_orig = data_by_test[td]["df_original"]
-    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    
-    # Remove previous Label objects (annotations) from each scatter figure
-    for fig in [p_scatter_exp, p_scatter_af, p_scatter_evol]:
-        label_objs = fig.select({'type': Label})
-        for lbl in label_objs:
-            if lbl in fig.renderers:
-                fig.renderers.remove(lbl)
+        return
 
-    if sub_orig.empty:
-        source_scatter_exp.data = dict(x=[], y=[])
-        source_scatter_af.data = dict(x=[], y=[])
-        source_scatter_evol.data = dict(x=[], y=[])
-        p_scatter_exp.title.text = f"{td} (No Data)"
-        p_scatter_af.title.text  = f"{td} (No Data)"
-        p_scatter_evol.title.text= f"{td} (No Data)"
-    else:
-        # ExpFrust
-        x_exp = sub_orig["B_Factor"].values
-        y_exp = sub_orig["ExpFrust"].values
-        source_scatter_exp.data = dict(x=x_exp, y=y_exp)
-        p_scatter_exp.title.text = f"{td} Experimental Frustration"
-        add_regression_line_and_label(p_scatter_exp, x_exp, y_exp, color="#2ca02c")
-        
-        # AFFrust
-        x_af = sub_orig["B_Factor"].values
-        y_af = sub_orig["AFFrust"].values
-        source_scatter_af.data = dict(x=x_af, y=y_af)
-        p_scatter_af.title.text = f"{td} AF Frustration"
-        add_regression_line_and_label(p_scatter_af, x_af, y_af, color="#ff7f0e")
-        
-        # EvolFrust
-        x_evol = sub_orig["B_Factor"].values
-        y_evol = sub_orig["EvolFrust"].values
-        source_scatter_evol.data = dict(x=x_evol, y=y_evol)
-        p_scatter_evol.title.text = f"{td} Evolutionary Frustration"
-        add_regression_line_and_label(p_scatter_evol, x_evol, y_evol, color="#d62728")
+    new_data = dict(
+        x=sub["AlnIndex"].tolist(),
+        residue=sub["Residue"].tolist(),
+        b_factor=sub["B_Factor"].tolist(),
+        exp_frust=sub["ExpFrust"].tolist(),
+        af_frust=sub["AFFrust"].tolist(),
+        evol_frust=sub["EvolFrust"].tolist()
+    )
+    source_plot.data = new_data
+    p.title.text = f"{td} (Smoothed)"
 
 select_test.on_change("value", update_plot)
+
+# Trigger the callback to populate the plot with the initial selection
 update_plot(None, None, initial_test)
 
 # (D) CORRELATION TABLE
@@ -424,47 +301,61 @@ else:
     ]
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# (E) FILTERS for correlation table
+# (E) FILTERS for correlation table using CheckboxButtonGroup
+# Prepare options for MultiSelect
 tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
 if not df_all_corr.empty:
-    combo_options = sorted({
+    # Build a list of "MetricA vs MetricB" strings
+    combo_options = sorted([
         f"{row['MetricA']} vs {row['MetricB']}" 
         for _, row in df_all_corr.iterrows()
-    })
+    ])
+    # Remove duplicates
+    combo_options = sorted(list(set(combo_options)))
 else:
     combo_options = []
 
+# Create CheckboxButtonGroups for tests and metric pairs
 cbg_tests = CheckboxButtonGroup(
     labels=tests_in_corr,
-    active=[]
+    active=[]  # No active selections by default
 )
+
 cbg_combos = CheckboxButtonGroup(
     labels=combo_options,
-    active=[]
+    active=[]  # No active selections by default
 )
 
 def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
+    """Filter the correlation table based on selected tests and metric pairs."""
     if df_all_corr.empty:
         return
+    # Get selected tests and metric pairs
     selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
     selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
     
+    # If no filters are selected, show all data
     if not selected_tests and not selected_combos:
         filtered = df_all_corr
     else:
+        # Create a "combo_str" column for easy filtering
         df_tmp = df_all_corr.copy()
         df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
         
+        # Apply filters
         if selected_tests and selected_combos:
             filtered = df_tmp[
                 (df_tmp["Test"].isin(selected_tests)) &
                 (df_tmp["combo_str"].isin(selected_combos))
             ].drop(columns=["combo_str"])
         elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests))
+            ].drop(columns=["combo_str"])
         elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+            filtered = df_tmp[
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
         else:
             filtered = df_all_corr
 
@@ -473,25 +364,27 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# (G) Header and description
+# (G) Header Section
 header = Div(text="""
     <h1>Evolutionary Frustration</h1>
     <p>
-        Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores and statistical potentials 
-        to calculate the mutational frustration of various proteins without the need for protein structures. 
-        By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based frustration metrics, 
-        we seek to validate the efficacy of sequence-derived evolutionary constraints in representing protein flexibility.
+        Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based frustration metrics, we seek to validate the efficacy of sequence derived evolutionary constraints in representing protein flexibility.
+    </p>
+    <p>
+        The data displayed compare the agreement of different frustration metrics with the experimental B-Factor, which measures the average positional uncertainty of each amino acid derived from crystallographic data. The metrics include:
     </p>
     <ul>
-        <li><strong>Experimental Frustration</strong>: Uses a crystal structure in the Frustratometer.</li>
-        <li><strong>AF Frustration</strong>: Uses an AlphaFold structure in the Frustratometer.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived solely from sequence alignments.</li>
+        <li><strong>Experimental Frustration</strong>: Uses the Frustratometer web tool with an experimentally derived protein structure.</li>
+        <li><strong>AF Frustration</strong>: Utilizes a sequence-derived protein structure generated by AlphaFold as the Frustratometer input.</li>
+        <li><strong>Evolutionary Frustration</strong>: Derived from evolutionary constraints represented by coupling scores without compressing them into a single structure.</li>
     </ul>
     <p>
-        The correlation table below the graphs presents Spearman correlation coefficients and p-values between different metrics 
-        using <em>non-smoothed</em> data. The line plots above are <em>smoothed</em> and <strong>min–max normalized</strong> per protein. 
-        <br>Normalization does not affect Spearman correlations (which depend on ranks), 
-        but be mindful that min–max scaling is not suitable for comparing data <em>across</em> different proteins.
+        The correlation table below the graphs presents Spearman correlation coefficients and p-values between different metrics using non-smoothed data. Visualized curves are smoothed with a moving average method (window size of 5). Notably, evolutionary frustration shows similar or better agreement with experimental B-Factor compared to the other metrics in many cases, presumably due to its ability to represent more of the full ensemble of available protein structures for a given sequence.
+    </p>
+    <p>
+    </ul>
+       Note on Noramlization: Min-max normalization has been employed for all four metrics displayed in the graph below. Normalized data is used to compute Spearman Correlation Coefficients because normalization does not affect the rank of the data. However, min-max normalization for each protein is NOT suitable for comparison between proteins due to the introduction of relative scaling discrepencies.
+    </ul>
     </p>
     <h3>Contributors</h3>
     <p>
@@ -499,65 +392,75 @@ header = Div(text="""
         <sup>1</sup>Department of Physics, Rice University, 6100 Main St, Houston, TX 77005<br>
         <sup>2</sup>Department of Chemistry, Rice University, 6100 Main St, Houston, TX 77005<br>
         <sup>3</sup>Department of Biosciences, Rice University, 6100 Main St, Houston, TX 77005<br>
-        <sup>4</sup>Center for Theoretical Biological Physics, Rice University, 6100 Main St, Houston, TX 77005
+        <sup>4</sup>Center for Theoretical Biophysics, Rice University, 6100 Main St, Houston, TX 77005
     </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
+""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})  # Changed 'style' to 'styles'
 
+# (G) Description of the Protein Visualizer
 description_visualizer = Div(text="""
     <h2>Protein Visualizer Instructions</h2>
     <p>
         The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
     </p>
     <ul>
-        <li><strong>Oscillation (O):</strong> Protein ribbon oscillates with amplitude/frequency mapped to average B-factor.</li>
-        <li><strong>Color (ExpFrust):</strong> Ribbon color indicates experimental frustration (light blue = minimal, magenta = high).</li>
-        <li><strong>Luminosity (EvolFrust):</strong> Luminosity indicates evolutionary frustration.</li>
-        <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
-        <li><strong>Navigation:</strong> W/A/S/D, Shift, Space, etc. to move the camera, C to zoom, Ctrl to accelerate.</li>
-        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. In unfolded state, O toggles oscillation or sets height by B-factor.</li>
-        <li><strong>Pause (P):</strong> Pauses the scene to select another protein.</li>
+        <li><strong>Oscillation:</strong> Pressing <code>o</code> causes the protein ribbon to oscillate. The amplitude and frequency of oscillation are mapped to the average B-factor associated with each residue of the protein.</li>
+        <li><strong>Color Representation:</strong> The color of the protein represents the experimental frustration of each residue, calculated by the Frustratometer and subsequently compressed into a per-residue metric. Light blue residues are minimally frustrated, while magenta residues are highly frustrated. The scale can be seen as the axis in the fragmented state (see below).</li>
+        <li><strong>Luminosity:</strong> The luminosity of each residue represents the evolutionary frustration of that residue.</li>
+        <li><strong>Fragmentation:</strong> Pressing <code>B</code> fragments the protein, and each fragment is plotted on a 3D plot representing the three aforementioned metrics.</li>
+        <li><strong>Navigation Controls:</strong>
+            <ul>
+                <li><code>W</code>, <code>A</code>, <code>S</code>, <code>D</code>: Move the camera.</li>
+                <li><code>Shift</code>: Move the camera down.</li>
+                <li><code>Space</code>: Move the camera up.</li>
+                <li>Hold <code>C</code>: Zoom the camera in.</li>
+                <li>Hold <code>Left Control</code>: Increase movement speed.</li>
+            </ul>
+        </li>
+        <li><strong>Folding Controls:</strong>
+            <ul>
+                <li><code>Q</code>: When the protein is in its folded state, pressing <code>Q</code> will unfold the protein and represent it as a line.</li>
+                <li><code>E</code>: When the protein is in its unfolded state, pressing <code>E</code> will refold the protein back to its original structure.</li>
+                <li>In the unfolded state, the protein can be either static or oscillating (controlled by <code>O</code>). In the oscillating state, the B-factor is mapped again by the frequency and amplitude of oscillation. In the static state, the B-factor is mapped out by the height of each residue.</li>
+            </ul>
+        </li>
+        <li><strong>Pause:</strong> Pressing <code>P</code> pauses the visualizer and allows you to select another protein.</li>
     </ul>
 """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
 
+# (I) Unity iframe with improved styling and without fullscreen toggle
 unity_iframe = Div(
     text="""
     <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
         <iframe 
-            src="https://igotintogradschool2025.site/unity/"
-            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
-                   box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+            src="https://igotintogradschool2025.site/unity/" 
+            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
             allowfullscreen>
         </iframe>
     </div>
     """,
     sizing_mode='stretch_width',
-    styles={'margin-top': '20px'}
+    styles={'margin-top': '20px'}  # Added top margin for spacing
 )
-unity_iframe.visible = True
+unity_iframe.visible = True  # Always visible
 
+# Create a container for the Unity viewer including description
 unity_container = column(
     description_visualizer,
     unity_iframe,
     sizing_mode='stretch_width'
 )
 
-scatter_row = row(
-    p_scatter_exp,
-    p_scatter_af,
-    p_scatter_evol,
-    sizing_mode='stretch_width'
-)
-
+# Visualization section with plot and Unity viewer
 visualization_section = column(
     select_test,
     p,
-    scatter_row,
     unity_container,
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
 
+# (F) Controls section with filters only (no toggles)
 controls_section = column(
     Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
     row(
@@ -573,6 +476,7 @@ controls_section = column(
     sizing_mode='stretch_width'
 )
 
+# Add custom CSS styles
 custom_styles = Div(text="""
     <style>
         .visualization-section {
@@ -589,6 +493,7 @@ custom_styles = Div(text="""
     </style>
 """)
 
+# Main layout combining all sections
 main_layout = column(
     custom_styles,
     header,
@@ -598,5 +503,6 @@ main_layout = column(
     sizing_mode='stretch_width'
 )
 
+# Set the document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
