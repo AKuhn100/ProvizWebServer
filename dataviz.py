@@ -533,20 +533,22 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
-# Update scatter plots to scale dynamically
+# Update scatter plots with a fixed aspect ratio
 p_scatter_exp.sizing_mode = "stretch_both"
 p_scatter_af.sizing_mode = "stretch_both"
 p_scatter_evol.sizing_mode = "stretch_both"
 
-# A row for the scatter plots with spacing; set a fixed total width to center them
+# Set a fixed aspect ratio for each scatter plot (e.g., width:height = 4:3)
+p_scatter_exp.aspect_ratio = 4 / 3
+p_scatter_af.aspect_ratio = 4 / 3
+p_scatter_evol.aspect_ratio = 4 / 3
+
+# Scatter plots row
 scatter_row = row(
-    Spacer(width=0, sizing_mode="stretch_both"),  # Left spacer
     p_scatter_exp,
     p_scatter_af,
     p_scatter_evol,
-    Spacer(width=0, sizing_mode="stretch_both"),  # Right spacer
-    sizing_mode="stretch_width",  # Stretch row to fit the window width
-    height=300  # Set a fixed height
+    sizing_mode="stretch_width",  # Stretch the row to fit the browser width
 )
 
 visualization_section = column(
