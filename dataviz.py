@@ -281,8 +281,8 @@ def add_regression_line_and_label(fig, xvals, yvals, color="black"):
     # Label with a unique name for easy removal
     label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
     label_obj = Label(
-        x=xvals_clean.max(),
-        y=yvals_clean.min(),
+        x=xvals_clean.min(),
+        y=yvals_clean.max() - 0.1,
         text=label_text,
         text_color=color,
         text_font_size="10px",
