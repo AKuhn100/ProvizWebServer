@@ -338,7 +338,61 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         </div>
         """
 
-[Previous select_test and correlation table code remains the same]
+def add_regression_line_and_label(fig, xvals, yvals, color="black"):
+    """Adds a linear regression line and a Label showing slope, intercept, and Pearson's r."""
+    if len(xvals) < 2 or np.all(xvals == xvals[0]):
+        return
+    
+    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
+    if not any(not_nan):
+        return
+    
+    xvals_clean = xvals[not_nan]
+    yvals_clean = yvals[not_nan]
+    if len(xvals_clean) < 2:
+        return
+    
+    # Linear regression
+    m, b = np.polyfit(xvals_clean, yvals_clean, 1)
+    # Pearson correlation for display
+    corr = np.corrcoef(xvals_clean, yvals_clean)[0, 1]
+    
+    # Plot line with a unique name for easy removal later
+    xline = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
+    yline = m*xline + b
+    line_renderer = fig.line(
+        xline, yline,
+        line_width=2, line_dash='dashed', color=color,
+        name="regression_line"
+    )
+    
+    # Label with a unique name for easy removal
+    label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
+    label_obj = Label(
+        x=xvals_clean.min(),
+        y=yvals_clean.max(),
+        text=label_text,
+        text_color=color,
+        text_font_size="10px",
+        text_font_style="bold",
+        name="regression_label"
+    )
+    fig.renderers.append(label_obj)
+
+# Dropdown select
+test_options = sorted(data_by_test.keys())
+if DEFAULT_TEST in test_options:
+    initial_test = DEFAULT_TEST
+elif test_options:
+    initial_test = test_options[0]
+else:
+    initial_test = ""
+
+select_test = Select(
+    title="Select Protein (test###):",
+    value=initial_test,
+    options=test_options
+)
 
 def update_plot(attr, old, new):
     """
@@ -395,6 +449,11 @@ def update_plot(attr, old, new):
         for line in old_lines:
             if line in fig.renderers:
                 fig.renderers.remove(line)
+        # Remove old labels named "regression_label"
+        old_labels = fig.select({'type': Label, 'name': 'regression_label'})
+        for lbl in old_labels:
+            if lbl in fig.renderers:
+                fig.renderers.remove(lbl)
         # Reset regression info Div
         info_div.text = ""
     
@@ -429,21 +488,6 @@ def update_plot(attr, old, new):
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
         p_scatter_evol.title.text = f"{td} Evolutionary Frustration"
         add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color="#d62728", info_div=regression_info_evol)
-
-# Dropdown select
-test_options = sorted(data_by_test.keys())
-if DEFAULT_TEST in test_options:
-    initial_test = DEFAULT_TEST
-elif test_options:
-    initial_test = test_options[0]
-else:
-    initial_test = ""
-
-select_test = Select(
-    title="Select Protein (test###):",
-    value=initial_test,
-    options=test_options
-)
 
 select_test.on_change("value", update_plot)
 update_plot(None, None, initial_test)
