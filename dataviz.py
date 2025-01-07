@@ -652,14 +652,11 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# Update visualization section with margins
+# Main layout
 visualization_section = column(
     select_test,
-    Spacer(height=10),  # Add some vertical spacing
-    column(p, margin=(0, 20, 20, 20)),  # Add margins around main plot
-    Spacer(height=10),  # Add some vertical spacing
+    p,
     scatter_row,
-    Spacer(height=20),  # Add some vertical spacing
     unity_container,
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
