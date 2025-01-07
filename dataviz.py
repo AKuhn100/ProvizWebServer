@@ -10,15 +10,7 @@ from bokeh.models import (
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
-from scipy.stats import spearmanrscatter_row = row(
-    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for left margin
-    p_scatter_exp,
-    p_scatter_af,
-    p_scatter_evol,
-    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for right margin
-    sizing_mode="stretch_width",  # Allow the entire row to stretch
-    height=300  # Set a fixed height for the row
-)
+from scipy.stats import spearmanr
 
 ###############################################################################
 # 1) Configuration
@@ -543,13 +535,13 @@ unity_container = column(
 
 # A row for the scatter plots with spacing; set a fixed total width to center them
 scatter_row = row(
-    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for left margin
+    Spacer(width=0, sizing_mode="stretch_both"),  # Left spacer
     p_scatter_exp,
     p_scatter_af,
     p_scatter_evol,
-    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for right margin
-    sizing_mode="stretch_width",  # Allow the entire row to stretch
-    height=300  # Set a fixed height for the row
+    Spacer(width=0, sizing_mode="stretch_both"),  # Right spacer
+    sizing_mode="stretch_width",  # Stretch row to fit the window width
+    height=300  # Set a fixed height
 )
 
 visualization_section = column(
