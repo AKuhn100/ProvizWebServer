@@ -155,7 +155,8 @@ p = figure(
     sizing_mode='stretch_width',
     height=600,
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
+    active_drag="box_zoom", 
+    active_scroll=None
 )
 
 # Define separate HoverTools for each metric
