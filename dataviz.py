@@ -533,6 +533,11 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
+# Update scatter plots to scale dynamically
+p_scatter_exp.sizing_mode = "stretch_both"
+p_scatter_af.sizing_mode = "stretch_both"
+p_scatter_evol.sizing_mode = "stretch_both"
+
 # A row for the scatter plots with spacing; set a fixed total width to center them
 scatter_row = row(
     Spacer(width=0, sizing_mode="stretch_both"),  # Left spacer
