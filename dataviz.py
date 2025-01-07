@@ -213,7 +213,12 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
+# Create figures with dynamic sizing and minimum dimensions
 p_scatter_exp = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,  # Keep plots square
+    min_width=350,   # Set minimum width
+    min_height=350,  # Set minimum height
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
@@ -221,6 +226,10 @@ p_scatter_exp = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_af = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
@@ -228,22 +237,16 @@ p_scatter_af = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_evol = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
-
-# Update scatter plots with sizing mode and aspect ratio
-p_scatter_exp.sizing_mode = "stretch_both"
-p_scatter_af.sizing_mode = "stretch_both"
-p_scatter_evol.sizing_mode = "stretch_both"
-
-# Set a fixed aspect ratio for each scatter plot
-p_scatter_exp.aspect_ratio = 4 / 3
-p_scatter_af.aspect_ratio = 4 / 3
-p_scatter_evol.aspect_ratio = 4 / 3
 
 source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
 source_scatter_af = ColumnDataSource(data=dict(x=[], y=[]))
@@ -509,17 +512,40 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# Create columns for each scatter plot and its regression info
-scatter_col_exp = column(p_scatter_exp, regression_info_exp, sizing_mode="stretch_width")
-scatter_col_af = column(p_scatter_af, regression_info_af, sizing_mode="stretch_width")
-scatter_col_evol = column(p_scatter_evol, regression_info_evol, sizing_mode="stretch_width")
+# Create columns for each scatter plot and its regression info with minimum width
+scatter_col_exp = column(
+    p_scatter_exp, 
+    regression_info_exp, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
+scatter_col_af = column(
+    p_scatter_af, 
+    regression_info_af, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
+scatter_col_evol = column(
+    p_scatter_evol, 
+    regression_info_evol, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
 
-# Scatter plots row
+# Update scatter plots row with flex layout and minimum widths
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
-    sizing_mode="stretch_width"  # Stretch the row to fit the browser width
+    sizing_mode="stretch_width",
+    styles={
+        'display': 'flex', 
+        'justify-content': 'space-between', 
+        'gap': '20px',
+        'width': '100%',
+        'margin': '0 auto',
+        'flex-wrap': 'wrap'
+    }
 )
 
 # Add header and description
