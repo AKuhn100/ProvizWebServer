@@ -213,12 +213,11 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-# Create figures with dynamic sizing and minimum dimensions
+# Create figures with scaling similar to main plot
 p_scatter_exp = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,  # Keep plots square
-    min_width=350,   # Set minimum width
-    min_height=350,  # Set minimum height
+    sizing_mode="stretch_width",
+    height=300,
+    aspect_ratio=1,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
@@ -226,10 +225,9 @@ p_scatter_exp = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_af = figure(
-    sizing_mode="stretch_both",
+    sizing_mode="stretch_width",
+    height=300,
     aspect_ratio=1,
-    min_width=350,
-    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
@@ -237,10 +235,9 @@ p_scatter_af = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_evol = figure(
-    sizing_mode="stretch_both",
+    sizing_mode="stretch_width",
+    height=300,
     aspect_ratio=1,
-    min_width=350,
-    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
@@ -512,40 +509,29 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# Create columns for each scatter plot and its regression info with minimum width
+# Create columns for each scatter plot and its regression info
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    sizing_mode="stretch_width"
 )
 scatter_col_af = column(
     p_scatter_af, 
     regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    sizing_mode="stretch_width"
 )
 scatter_col_evol = column(
     p_scatter_evol, 
     regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    sizing_mode="stretch_width"
 )
 
-# Update scatter plots row with flex layout and minimum widths
+# Update scatter plots row
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
-    sizing_mode="stretch_width",
-    styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
-        'gap': '20px',
-        'width': '100%',
-        'margin': '0 auto',
-        'flex-wrap': 'wrap'
-    }
+    sizing_mode="stretch_width"
 )
 
 # Add header and description
