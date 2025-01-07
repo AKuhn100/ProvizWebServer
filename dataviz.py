@@ -213,28 +213,36 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-# Create figures with dynamic sizing
+# Create the three scatter plots with consistent sizing
 p_scatter_exp = figure(
-    sizing_mode="stretch_both",  # Allow both dimensions to stretch
-    aspect_ratio=1,  # Keep plots square
+    sizing_mode="scale_both",
+    plot_height=300,
+    plot_width=300,
+    match_aspect=True,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
+
 p_scatter_af = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,
+    sizing_mode="scale_both",
+    plot_height=300,
+    plot_width=300,
+    match_aspect=True,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
+
 p_scatter_evol = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,
+    sizing_mode="scale_both",
+    plot_height=300,
+    plot_width=300,
+    match_aspect=True,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
