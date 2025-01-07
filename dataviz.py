@@ -7,7 +7,7 @@ from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
     DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, 
-    Spacer, Panel, Tabs
+    Spacer, Panel, Tabs, Slider
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
@@ -358,6 +358,22 @@ select_test = Select(
     options=test_options
 )
 
+# Add slider for moving average window size
+window_slider = Slider(
+    start=1, 
+    end=21, 
+    value=5, 
+    step=2, 
+    title="Moving Average Window Size",
+    width=400
+)
+
+def update_moving_average(attr, old, new):
+    """Update plot when slider value changes"""
+    update_plot(None, None, select_test.value)
+
+window_slider.on_change('value', update_moving_average)
+
 def update_plot(attr, old, new):
     """
     Updates both the main plot and scatter plots when a new test is selected.
@@ -377,9 +393,30 @@ def update_plot(attr, old, new):
         regression_info_evol.text = ""
         return
     
-    # Update main line plot (smoothed + normalized)
-    dfp = data_by_test[td]["df_plot"]
-    sub_plot = dfp.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    # Get window size from slider
+    window_size = window_slider.value
+    
+    # Update main line plot with new window size
+    df_orig = data_by_test[td]["df_original"]
+    df_plot = df_orig.copy()
+    
+    # Apply moving average with current window size
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        df_plot[col] = moving_average(arr, window_size=window_size)
+    
+    # Normalize the smoothed data
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        valid_mask = ~np.isnan(arr)
+        if not np.any(valid_mask):
+            continue
+        col_min = np.nanmin(arr)
+        col_max = np.nanmax(arr)
+        if col_max > col_min:
+            df_plot[col] = (arr - col_min) / (col_max - col_min)
+    
+    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = f"{td} (No valid rows)."
@@ -652,9 +689,10 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# Main layout
+# Main layout with slider
 visualization_section = column(
     select_test,
+    window_slider,
     p,
     scatter_row,
     unity_container,
