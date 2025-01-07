@@ -213,8 +213,8 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-scatter_width = 300
-scatter_height = 300
+scatter_width = 400  # Increased width for better row filling
+scatter_height = 400  # Increased height to maintain aspect ratio
 
 p_scatter_exp = figure(
     width=scatter_width,
@@ -257,8 +257,9 @@ regression_info_exp = Div(
         'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
-        'font-size': '12px',
-        'width': f'{scatter_width}px'
+        'font-size': '14px',
+        'width': f'{scatter_width}px',
+        'text-align': 'center'
     }
 )
 regression_info_af = Div(
@@ -269,8 +270,9 @@ regression_info_af = Div(
         'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
-        'font-size': '12px',
-        'width': f'{scatter_width}px'
+        'font-size': '14px',
+        'width': f'{scatter_width}px',
+        'text-align': 'center'
     }
 )
 regression_info_evol = Div(
@@ -281,8 +283,9 @@ regression_info_evol = Div(
         'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
-        'font-size': '12px',
-        'width': f'{scatter_width}px'
+        'font-size': '14px',
+        'width': f'{scatter_width}px',
+        'text-align': 'center'
     }
 )
 
@@ -324,15 +327,12 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         name="regression_line"
     )
     
-    # Update regression info div
+    # Update regression info div with equation format
     if info_div:
         info_div.text = f"""
         <div style='color: {color}'>
-            <strong>Regression Analysis:</strong><br>
-            Slope (m) = {m:.3f}<br>
-            Intercept (b) = {b:.3f}<br>
-            Pearson's r = {corr:.3f}<br>
-            N = {len(xvals_clean)} points
+            <strong>y = {m:.3f}x + {b:.3f}</strong><br>
+            <span style='font-size: 12px'>N = {len(xvals_clean)} points</span>
         </div>
         """
 
@@ -510,12 +510,13 @@ scatter_col_exp = column(p_scatter_exp, regression_info_exp)
 scatter_col_af = column(p_scatter_af, regression_info_af)
 scatter_col_evol = column(p_scatter_evol, regression_info_evol)
 
-# Update scatter plots row
+# Update scatter plots row with better spacing and centering
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
-    sizing_mode="stretch_width"
+    sizing_mode="stretch_width",
+    styles={'display': 'flex', 'justify-content': 'center', 'gap': '20px'}
 )
 
 # Add header and description
