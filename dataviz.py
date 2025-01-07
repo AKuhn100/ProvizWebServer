@@ -6,7 +6,8 @@ import pandas as pd
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, Spacer
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, 
+    Spacer, Panel, Tabs, Box
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
@@ -214,9 +215,12 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
+scatter_width = 300
+scatter_height = 300
+
 p_scatter_exp = figure(
-    width=300,
-    height=300,
+    width=scatter_width,
+    height=scatter_height,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
@@ -224,8 +228,8 @@ p_scatter_exp = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_af = figure(
-    width=300,
-    height=300,
+    width=scatter_width,
+    height=scatter_height,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
@@ -233,8 +237,8 @@ p_scatter_af = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_evol = figure(
-    width=300,
-    height=300,
+    width=scatter_width,
+    height=scatter_height,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
@@ -246,22 +250,66 @@ source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
 source_scatter_af = ColumnDataSource(data=dict(x=[], y=[]))
 source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[]))
 
+# Create Div elements for regression info
+regression_info_exp = Div(
+    text="", 
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '12px',
+        'width': f'{scatter_width}px'
+    }
+)
+regression_info_af = Div(
+    text="",
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '12px',
+        'width': f'{scatter_width}px'
+    }
+)
+regression_info_evol = Div(
+    text="",
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '12px',
+        'width': f'{scatter_width}px'
+    }
+)
+
 p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#2ca02c", alpha=0.7)
 p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#ff7f0e", alpha=0.7)
 p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#d62728", alpha=0.7)
 
-def add_regression_line_and_label(fig, xvals, yvals, color="black"):
-    """Adds a linear regression line and a Label showing slope, intercept, and Pearson's r."""
+def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None):
+    """Adds a linear regression line and updates the regression info Div."""
     if len(xvals) < 2 or np.all(xvals == xvals[0]):
+        if info_div:
+            info_div.text = "Insufficient data for regression"
         return
     
     not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
     if not any(not_nan):
+        if info_div:
+            info_div.text = "No valid data points"
         return
     
     xvals_clean = xvals[not_nan]
     yvals_clean = yvals[not_nan]
     if len(xvals_clean) < 2:
+        if info_div:
+            info_div.text = "Insufficient data for regression"
         return
     
     # Linear regression
@@ -278,33 +326,19 @@ def add_regression_line_and_label(fig, xvals, yvals, color="black"):
         name="regression_line"
     )
     
-    # Label with a unique name for easy removal
-    label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
-    label_obj = Label(
-        x=xvals_clean.min(),
-        y=yvals_clean.max(),
-        text=label_text,
-        text_color=color,
-        text_font_size="10px",
-        text_font_style="bold",
-        name="regression_label"
-    )
-    fig.renderers.append(label_obj)
+    # Update regression info div
+    if info_div:
+        info_div.text = f"""
+        <div style='color: {color}'>
+            <strong>Regression Analysis:</strong><br>
+            Slope (m) = {m:.3f}<br>
+            Intercept (b) = {b:.3f}<br>
+            Pearson's r = {corr:.3f}<br>
+            N = {len(xvals_clean)} points
+        </div>
+        """
 
-# Dropdown select
-test_options = sorted(data_by_test.keys())
-if DEFAULT_TEST in test_options:
-    initial_test = DEFAULT_TEST
-elif test_options:
-    initial_test = test_options[0]
-else:
-    initial_test = ""
-
-select_test = Select(
-    title="Select Protein (test###):",
-    value=initial_test,
-    options=test_options
-)
+[Previous select_test and correlation table code remains the same]
 
 def update_plot(attr, old, new):
     """
@@ -323,6 +357,9 @@ def update_plot(attr, old, new):
         p_scatter_exp.title.text = ""
         p_scatter_af.title.text = ""
         p_scatter_evol.title.text = ""
+        regression_info_exp.text = ""
+        regression_info_af.text = ""
+        regression_info_evol.text = ""
         return
     
     # --- Update main line plot (smoothed + normalized) ---
@@ -347,19 +384,20 @@ def update_plot(attr, old, new):
     df_orig = data_by_test[td]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
-    # For each scatter figure, remove old regression lines & labels
-    for fig in [p_scatter_exp, p_scatter_af, p_scatter_evol]:
+    # For each scatter figure, remove old regression lines & Divs
+    for fig, info_div in [
+        (p_scatter_exp, regression_info_exp),
+        (p_scatter_af, regression_info_af),
+        (p_scatter_evol, regression_info_evol)
+    ]:
         # Remove old lines named "regression_line"
         old_lines = fig.select({'type': GlyphRenderer, 'name': 'regression_line'})
         for line in old_lines:
             if line in fig.renderers:
                 fig.renderers.remove(line)
-        # Remove old labels named "regression_label"
-        old_labels = fig.select({'type': Label, 'name': 'regression_label'})
-        for lbl in old_labels:
-            if lbl in fig.renderers:
-                fig.renderers.remove(lbl)
-
+        # Reset regression info Div
+        info_div.text = ""
+    
     if sub_orig.empty:
         source_scatter_exp.data = dict(x=[], y=[])
         source_scatter_af.data = dict(x=[], y=[])
@@ -367,27 +405,45 @@ def update_plot(attr, old, new):
         p_scatter_exp.title.text = f"{td} (No Data)"
         p_scatter_af.title.text  = f"{td} (No Data)"
         p_scatter_evol.title.text= f"{td} (No Data)"
+        regression_info_exp.text = ""
+        regression_info_af.text = ""
+        regression_info_evol.text = ""
     else:
         # ExpFrust
         x_exp = sub_orig["B_Factor"].values
         y_exp = sub_orig["ExpFrust"].values
         source_scatter_exp.data = dict(x=x_exp, y=y_exp)
         p_scatter_exp.title.text = f"{td} Experimental Frustration"
-        add_regression_line_and_label(p_scatter_exp, x_exp, y_exp, color="#2ca02c")
+        add_regression_line_and_info(p_scatter_exp, x_exp, y_exp, color="#2ca02c", info_div=regression_info_exp)
         
         # AFFrust
         x_af = sub_orig["B_Factor"].values
         y_af = sub_orig["AFFrust"].values
         source_scatter_af.data = dict(x=x_af, y=y_af)
         p_scatter_af.title.text = f"{td} AF Frustration"
-        add_regression_line_and_label(p_scatter_af, x_af, y_af, color="#ff7f0e")
+        add_regression_line_and_info(p_scatter_af, x_af, y_af, color="#ff7f0e", info_div=regression_info_af)
         
         # EvolFrust
         x_evol = sub_orig["B_Factor"].values
         y_evol = sub_orig["EvolFrust"].values
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
         p_scatter_evol.title.text = f"{td} Evolutionary Frustration"
-        add_regression_line_and_label(p_scatter_evol, x_evol, y_evol, color="#d62728")
+        add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color="#d62728", info_div=regression_info_evol)
+
+# Dropdown select
+test_options = sorted(data_by_test.keys())
+if DEFAULT_TEST in test_options:
+    initial_test = DEFAULT_TEST
+elif test_options:
+    initial_test = test_options[0]
+else:
+    initial_test = ""
+
+select_test = Select(
+    title="Select Protein (test###):",
+    value=initial_test,
+    options=test_options
+)
 
 select_test.on_change("value", update_plot)
 update_plot(None, None, initial_test)
@@ -533,22 +589,17 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
-# Update scatter plots with a fixed aspect ratio
-p_scatter_exp.sizing_mode = "stretch_both"
-p_scatter_af.sizing_mode = "stretch_both"
-p_scatter_evol.sizing_mode = "stretch_both"
+# Create scatter plot columns with regression info
+scatter_col_exp = column(p_scatter_exp, regression_info_exp)
+scatter_col_af = column(p_scatter_af, regression_info_af)
+scatter_col_evol = column(p_scatter_evol, regression_info_evol)
 
-# Set a fixed aspect ratio for each scatter plot (e.g., width:height = 4:3)
-p_scatter_exp.aspect_ratio = 4 / 3
-p_scatter_af.aspect_ratio = 4 / 3
-p_scatter_evol.aspect_ratio = 4 / 3
-
-# Scatter plots row
+# Update scatter plots row
 scatter_row = row(
-    p_scatter_exp,
-    p_scatter_af,
-    p_scatter_evol,
-    sizing_mode="stretch_width",  # Stretch the row to fit the browser width
+    scatter_col_exp,
+    scatter_col_af,
+    scatter_col_evol,
+    sizing_mode="stretch_width"
 )
 
 visualization_section = column(
