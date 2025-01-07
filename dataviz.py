@@ -213,10 +213,12 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-# Create figures with dynamic sizing
+# Create figures with dynamic sizing and minimum dimensions
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,  # Keep plots square
+    min_width=350,   # Set minimum width
+    min_height=350,  # Set minimum height
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
@@ -226,6 +228,8 @@ p_scatter_exp = figure(
 p_scatter_af = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
+    min_width=350,
+    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
@@ -235,6 +239,8 @@ p_scatter_af = figure(
 p_scatter_evol = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
+    min_width=350,
+    min_height=350,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
@@ -506,27 +512,27 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# Create columns for each scatter plot and its regression info
+# Create columns for each scatter plot and its regression info with minimum width
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
-    sizing_mode="scale_width",
-    styles={'flex-grow': '1', 'flex-basis': '0'}
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
 )
 scatter_col_af = column(
     p_scatter_af, 
     regression_info_af, 
-    sizing_mode="scale_width",
-    styles={'flex-grow': '1', 'flex-basis': '0'}
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
 )
 scatter_col_evol = column(
     p_scatter_evol, 
     regression_info_evol, 
-    sizing_mode="scale_width",
-    styles={'flex-grow': '1', 'flex-basis': '0'}
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
 )
 
-# Update scatter plots row with flex layout
+# Update scatter plots row with flex layout and minimum widths
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
@@ -537,7 +543,8 @@ scatter_row = row(
         'justify-content': 'space-between', 
         'gap': '20px',
         'width': '100%',
-        'margin': '0 auto'
+        'margin': '0 auto',
+        'flex-wrap': 'wrap'
     }
 )
 
