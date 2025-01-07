@@ -10,7 +10,15 @@ from bokeh.models import (
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
-from scipy.stats import spearmanr
+from scipy.stats import spearmanrscatter_row = row(
+    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for left margin
+    p_scatter_exp,
+    p_scatter_af,
+    p_scatter_evol,
+    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for right margin
+    sizing_mode="stretch_width",  # Allow the entire row to stretch
+    height=300  # Set a fixed height for the row
+)
 
 ###############################################################################
 # 1) Configuration
@@ -282,7 +290,7 @@ def add_regression_line_and_label(fig, xvals, yvals, color="black"):
     label_text = f"y = {m:.2f}x + {b:.2f}\nr = {corr:.2f}"
     label_obj = Label(
         x=xvals_clean.min(),
-        y=yvals_clean.max() - 0.1,
+        y=yvals_clean.max(),
         text=label_text,
         text_color=color,
         text_font_size="10px",
@@ -535,10 +543,13 @@ unity_container = column(
 
 # A row for the scatter plots with spacing; set a fixed total width to center them
 scatter_row = row(
-    p_scatter_exp, p_scatter_af, p_scatter_evol,
-    spacing=50,
-    width=1050,        # Adjust as desired
-    sizing_mode='fixed'
+    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for left margin
+    p_scatter_exp,
+    p_scatter_af,
+    p_scatter_evol,
+    Spacer(width=0, sizing_mode="stretch_both"),  # Dynamic spacer for right margin
+    sizing_mode="stretch_width",  # Allow the entire row to stretch
+    height=300  # Set a fixed height for the row
 )
 
 visualization_section = column(
