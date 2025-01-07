@@ -252,7 +252,6 @@ def remove_old_regression(plot, line_name, label_name):
     for l in old_label:
         plot.remove_layout(l)
 
-# Helper function to add a regression line and label
 def add_regression_line(plot, x, y, line_name, label_name):
     """
     Adds a linear regression line (dotted) and a label with slope, intercept, and R^2.
@@ -272,7 +271,6 @@ def add_regression_line(plot, x, y, line_name, label_name):
     )
 
     # Position the label near top-left corner
-    # We'll offset a bit from the left and top by ~10%
     x_pos = plot.x_range.start + 0.05 * (plot.x_range.end - plot.x_range.start)
     y_pos = plot.y_range.end - 0.1 * (plot.y_range.end - plot.y_range.start)
     
@@ -282,7 +280,7 @@ def add_regression_line(plot, x, y, line_name, label_name):
         text=eqn_text,
         text_font_size="8pt",
         text_color="black",
-        render_mode="canvas",
+        # Removed render_mode="canvas" to avoid attribute error
         background_fill_color="white",
         name=label_name
     )
