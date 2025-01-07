@@ -213,12 +213,10 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # --- Three scatter plots (NON-NORMALIZED) ---
-scatter_width = 400  # Increased width for better row filling
-scatter_height = 400  # Increased height to maintain aspect ratio
-
+# Create figures with dynamic sizing
 p_scatter_exp = figure(
-    width=scatter_width,
-    height=scatter_height,
+    sizing_mode="stretch_both",
+    aspect_ratio=1,  # Keep plots square
     title="",
     x_axis_label="B-Factor",
     y_axis_label="ExpFrust",
@@ -226,8 +224,8 @@ p_scatter_exp = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_af = figure(
-    width=scatter_width,
-    height=scatter_height,
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="AFFrust",
@@ -235,8 +233,8 @@ p_scatter_af = figure(
     active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_evol = figure(
-    width=scatter_width,
-    height=scatter_height,
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
     title="",
     x_axis_label="B-Factor",
     y_axis_label="EvolFrust",
@@ -258,9 +256,10 @@ regression_info_exp = Div(
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
-        'width': f'{scatter_width}px',
-        'text-align': 'center'
-    }
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
 )
 regression_info_af = Div(
     text="",
@@ -271,9 +270,10 @@ regression_info_af = Div(
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
-        'width': f'{scatter_width}px',
-        'text-align': 'center'
-    }
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
 )
 regression_info_evol = Div(
     text="",
@@ -284,9 +284,10 @@ regression_info_evol = Div(
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
-        'width': f'{scatter_width}px',
-        'text-align': 'center'
-    }
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
 )
 
 p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#2ca02c", alpha=0.7)
@@ -505,18 +506,39 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# Create scatter plot columns with regression info
-scatter_col_exp = column(p_scatter_exp, regression_info_exp)
-scatter_col_af = column(p_scatter_af, regression_info_af)
-scatter_col_evol = column(p_scatter_evol, regression_info_evol)
+# Create columns for each scatter plot and its regression info
+scatter_col_exp = column(
+    p_scatter_exp, 
+    regression_info_exp, 
+    sizing_mode="scale_width",
+    styles={'flex-grow': '1', 'flex-basis': '0'}
+)
+scatter_col_af = column(
+    p_scatter_af, 
+    regression_info_af, 
+    sizing_mode="scale_width",
+    styles={'flex-grow': '1', 'flex-basis': '0'}
+)
+scatter_col_evol = column(
+    p_scatter_evol, 
+    regression_info_evol, 
+    sizing_mode="scale_width",
+    styles={'flex-grow': '1', 'flex-basis': '0'}
+)
 
-# Update scatter plots row with better spacing and centering
+# Update scatter plots row with flex layout
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
     sizing_mode="stretch_width",
-    styles={'display': 'flex', 'justify-content': 'center', 'gap': '20px'}
+    styles={
+        'display': 'flex', 
+        'justify-content': 'space-between', 
+        'gap': '20px',
+        'width': '100%',
+        'margin': '0 auto'
+    }
 )
 
 # Add header and description
