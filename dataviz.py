@@ -212,27 +212,8 @@ p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
-# Create a container div for the main plot
-main_plot_container = Div(
-    text=f"""
-    <div style="height: 600px; overflow: hidden; border: 1px solid #ddd; border-radius: 4px; margin: 10px 0;">
-        <div id="main-plot-container" style="width: 100%; height: 100%;">
-        </div>
-    </div>
-    """,
-    sizing_mode="stretch_width"
-)
-
-# Create a container div for scatter plots
-scatter_container = Div(
-    text=f"""
-    <div style="height: 450px; overflow: hidden; border: 1px solid #ddd; border-radius: 4px; margin: 10px 0;">
-        <div id="scatter-plots-container" style="width: 100%; height: 100%;">
-        </div>
-    </div>
-    """,
-    sizing_mode="stretch_width"
-)
+# --- Three scatter plots (NON-NORMALIZED) ---
+# Create figures with dynamic sizing and minimum dimensions
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,  # Keep plots square
@@ -671,26 +652,25 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# Update the visualization section with containers
+# Main layout
 visualization_section = column(
     select_test,
-    main_plot_container,
-    scatter_container,
+    p,
+    scatter_row,
     unity_container,
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
 
-def modify_doc(doc):
-    # Add the main plot to its container
-    doc.add_root(column(p, sizing_mode='stretch_both'))
-    doc.getElementById('main-plot-container').children[0] = p
-    
-    # Add scatter plots to their container
-    doc.add_root(scatter_row)
-    doc.getElementById('scatter-plots-container').children[0] = scatter_row
+main_layout = column(
+    custom_styles,
+    header,
+    visualization_section,
+    controls_section,
+    data_table,
+    sizing_mode='stretch_width'
+)
 
 # Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
-modify_doc(curdoc())
