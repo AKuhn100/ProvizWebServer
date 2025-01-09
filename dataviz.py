@@ -7,8 +7,9 @@ from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
     DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, 
-    Spacer, Panel, Tabs, Slider
+    Spacer, Slider
 )
+from bokeh.models.layouts import Panel, Tabs  # Panel and Tabs moved here
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from scipy.stats import spearmanr
