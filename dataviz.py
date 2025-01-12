@@ -849,16 +849,20 @@ p_std.legend.title = "Frustration Type"
 p_std.legend.click_policy = "mute"
 
 # (H) Spearman Rho per Protein and Frustration Metric
-# Melt data_proviz for the third plot
-data_long_corr = data_proviz.melt(
-    id_vars=['Protein'],
-    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
-    var_name='Frust_Type',
-    value_name='Spearman_Rho'
-)
-
-# Clean Frust_Type names
-data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+# (H) Spearman Rho per Protein and Frustration Metric
+# Prepare data in improved format
+data_long_corr = []
+for protein in data_proviz['Protein']:
+    for frust_type in ['ExpFrust.', 'AFFrust.', 'EvolFrust.']:
+        col_name = f'Spearman_{frust_type.replace(".", "")}'
+        value = data_proviz.loc[data_proviz['Protein'] == protein, col_name].iloc[0]
+        if not pd.isna(value):
+            data_long_corr.append({
+                'Protein': protein,
+                'Frust_Type': frust_type,
+                'Spearman_Rho': value
+            })
+data_long_corr = pd.DataFrame(data_long_corr)
 
 # Remove rows with NaN correlations
 data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
@@ -880,24 +884,38 @@ p_corr = figure(
 
 # Define color palette for Frustration Types
 frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
-palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
+palette_corr = Category10[max(3, len(frust_types_corr))]
 color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
 
-# Add HoverTool
+# Add enhanced HoverTool
 hover_corr = HoverTool(
     tooltips=[
         ("Protein", "@Protein"),
         ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ("Correlation", "@Spearman_Rho{0.000}")
     ],
     mode='mouse'
 )
 p_corr.add_tools(hover_corr)
 
-# Add horizontal line at y=0
-p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
+# Improve grid appearance
+p_corr.grid.grid_line_color = 'gray'
+p_corr.grid.grid_line_alpha = 0.3
+p_corr.grid.minor_grid_line_color = 'gray'
+p_corr.grid.minor_grid_line_alpha = 0.1
 
-# Add scatter glyphs
+# Enhanced zero reference line
+p_corr.line(
+    x=[-0.5, len(data_proviz['Protein']) - 0.5],
+    y=[0, 0],
+    line_width=2,
+    line_dash='dashed',
+    color='black',
+    alpha=0.5,
+    name='y_zero_line'
+)
+
+# Add scatter glyphs with improved styling
 for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
@@ -905,8 +923,8 @@ for frust in frust_types_corr:
         'Protein', 'Spearman_Rho',
         source=source_subset,
         color=color_map_corr[frust],
-        size=8,
-        alpha=0.6,
+        size=10,  # Slightly larger points
+        alpha=0.7,  # Slightly more opaque
         legend_label=frust,
         muted_alpha=0.1
     )
@@ -920,33 +938,49 @@ for frust in frust_types_corr:
         slope, intercept, r_value, p_value, std_err = linregress(x_vals, y_vals)
         x_range = np.linspace(x_vals.min(), x_vals.max(), 100)
         y_range = slope * x_range + intercept
-        p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
+        
+        # Add visible regression line
+        p_corr.line(
+            x_range, y_range,
+            color=color_map_corr[frust],
+            line_dash='dashed',
+            line_width=2,
+            alpha=0.6
+        )
         
         # Add regression equation hover
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+            equation=[f"y = {slope:.3f}x + {intercept:.3f} (R² = {r_value**2:.3f})"] * len(x_range)
         ))
-        invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        invisible_regression = p_corr.line(
+            'x', 'y',
+            source=regression_source,
+            line_width=10,
+            alpha=0,
+            name=f'regression_hover_{frust}'
+        )
         
         hover_regression = HoverTool(
             renderers=[invisible_regression],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
+            tooltips=[("Regression", "@equation")],
             mode='mouse'
         )
         p_corr.add_tools(hover_regression)
 
+# Improve legend styling
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
 p_corr.legend.click_policy = "mute"
+p_corr.legend.background_fill_alpha = 0.7
+p_corr.legend.border_line_color = 'gray'
+p_corr.legend.border_line_alpha = 0.5
 
-# Rotate x-axis labels to prevent overlapping
-from math import pi
+# Improve x-axis label readability
 p_corr.xaxis.major_label_orientation = pi / 4  # 45 degrees
-
+p_corr.xaxis.axis_label_text_font_size = '12pt'
+p_corr.xaxis.major_label_text_font_size = '10pt'
 
 ###############################################################################
 # 7) User Interface Components
