@@ -711,26 +711,29 @@ for frust in frust_types:
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Create a single source for both the visible line and hover
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-        
-        # Add the visible regression line with hover functionality
-        regression_line = p_avg.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust[frust], 
+        # Add the visible regression line
+        p_avg.line(
+            x_range, y_range,
+            color=color_map_frust[frust],
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
         
+        # Add invisible line with wider line_width for better hover
+        hover_line = p_avg.line(
+            x_range, y_range,
+            color=color_map_frust[frust],
+            line_width=20,
+            alpha=0,
+            name=f'hover_line_{frust}',
+            hover_line_color=color_map_frust[frust],
+            hover_line_alpha=0.1
+        )
+        
         hover_regression = HoverTool(
-            renderers=[regression_line],
+            renderers=[hover_line],
             tooltips=[
-                ("Regression Equation", "@equation")
+                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
             ],
             mode='mouse'
         )
@@ -785,26 +788,29 @@ for frust in frust_types:
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Create a single source for both the visible line and hover
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-        
-        # Add the visible regression line with hover functionality
-        regression_line = p_std.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust[frust], 
+        # Add the visible regression line
+        p_std.line(
+            x_range, y_range,
+            color=color_map_frust[frust],
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
         
+        # Add invisible line with wider line_width for better hover
+        hover_line = p_std.line(
+            x_range, y_range,
+            color=color_map_frust[frust],
+            line_width=20,
+            alpha=0,
+            name=f'hover_line_{frust}',
+            hover_line_color=color_map_frust[frust],
+            hover_line_alpha=0.1
+        )
+        
         hover_regression = HoverTool(
-            renderers=[regression_line],
+            renderers=[hover_line],
             tooltips=[
-                ("Regression Equation", "@equation")
+                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
             ],
             mode='mouse'
         )
