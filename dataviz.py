@@ -574,87 +574,87 @@ if initial_file:
     update_plot(None, None, initial_file)
 
 
-# ###############################################################################
-# # 5) CORRELATION TABLE AND FILTERS
-# ###############################################################################
+###############################################################################
+# 5) CORRELATION TABLE AND FILTERS
+###############################################################################
 
-# # (D) CORRELATION TABLE
-# if df_all_corr.empty:
-#     columns = [
-#         TableColumn(field="Test", title="Test"),
-#         TableColumn(field="MetricA", title="MetricA"),
-#         TableColumn(field="MetricB", title="MetricB"),
-#         TableColumn(field="Rho", title="Rho"),
-#         TableColumn(field="Pval", title="p-value")
-#     ]
-#     source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-#     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-# else:
-#     source_corr = ColumnDataSource(df_all_corr)
-#     columns = [
-#         TableColumn(field="Test", title="Test"),
-#         TableColumn(field="MetricA", title="MetricA"),
-#         TableColumn(field="MetricB", title="MetricB"),
-#         TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-#         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-#     ]
-#     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# # (E) FILTERS for correlation table
-# tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-# if not df_all_corr.empty:
-#     combo_options = sorted({
-#         f"{row['MetricA']} vs {row['MetricB']}" 
-#         for _, row in df_all_corr.iterrows()
-#     })
-# else:
-#     combo_options = []
+# (E) FILTERS for correlation table
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
 
-# # Replaced CheckboxButtonGroup with MultiSelect for better layout handling
-# multi_tests = MultiSelect(
-#     title="Select Tests:",
-#     value=[],
-#     options=tests_in_corr,
-#     size=10,
-#     width=300
-# )
-# multi_combos = MultiSelect(
-#     title="Select Metric Pairs:",
-#     value=[],
-#     options=combo_options,
-#     size=10,
-#     width=300
-# )
+# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
+multi_tests = MultiSelect(
+    title="Select Tests:",
+    value=[],
+    options=tests_in_corr,
+    size=10,
+    width=300
+)
+multi_combos = MultiSelect(
+    title="Select Metric Pairs:",
+    value=[],
+    options=combo_options,
+    size=10,
+    width=300
+)
 
-# def update_corr_filter(attr, old, new):
-#     """Filter correlation table based on selected tests and metric pairs."""
-#     if df_all_corr.empty:
-#         return
-#     selected_tests = multi_tests.value
-#     selected_combos = multi_combos.value
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    selected_tests = multi_tests.value
+    selected_combos = multi_combos.value
     
-#     if not selected_tests and not selected_combos:
-#         filtered = df_all_corr
-#     else:
-#         df_tmp = df_all_corr.copy()
-#         df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
         
-#         if selected_tests and selected_combos:
-#             filtered = df_tmp[
-#                 (df_tmp["Test"].isin(selected_tests)) &
-#                 (df_tmp["combo_str"].isin(selected_combos))
-#             ].drop(columns=["combo_str"])
-#         elif selected_tests:
-#             filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-#         elif selected_combos:
-#             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-#         else:
-#             filtered = df_all_corr
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
     
-#     source_corr.data = filtered.to_dict(orient="list")
+    source_corr.data = filtered.to_dict(orient="list")
 
-# multi_tests.on_change("value", update_corr_filter)
-# multi_combos.on_change("value", update_corr_filter)
+multi_tests.on_change("value", update_corr_filter)
+multi_combos.on_change("value", update_corr_filter)
 
 
 ###############################################################################
@@ -994,27 +994,6 @@ unity_container = column(
 
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
-
-# Define test and combo options (replace these with your actual options)
-test_options = ["test1", "test2", "test3"]  # Replace with your actual test options
-combo_options = ["combo1", "combo2", "combo3"]  # Replace with your actual combo options
-
-# Define MultiSelect widgets
-multi_tests = MultiSelect(
-    title="Select Tests",
-    value=["all"],
-    options=["all"] + list(test_options),
-    height=150,
-    sizing_mode='stretch_width'
-)
-
-multi_combos = MultiSelect(
-    title="Select Combinations",
-    value=["all"],
-    options=["all"] + list(combo_options),
-    height=150,
-    sizing_mode='stretch_width'
-)
 
 # Arrange MultiSelect widgets in a column
 controls_section_layout = column(
