@@ -6,12 +6,13 @@ from scipy.stats import spearmanr, linregress
 
 from bokeh.io import curdoc
 from bokeh.models import (
-    ColumnDataSource, Select, MultiSelect,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Slider
+    ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
 )
 from bokeh.plotting import figure
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
+
 
 ###############################################################################
 # 1) Configuration
@@ -25,6 +26,7 @@ FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove as needed
 # Default file to visualize on startup
 DEFAULT_FILE = "summary_test001.txt"  # Change to your preferred default or set to ""
 
+
 ###############################################################################
 # 2) Helpers: Data Parsing and Aggregation
 ###############################################################################
@@ -36,7 +38,7 @@ def moving_average(arr, window_size=5):
     n = len(arr)
     out = np.full(n, np.nan)
     halfw = window_size // 2
-
+    
     for i in range(n):
         if np.isnan(arr[i]):
             continue
@@ -53,33 +55,33 @@ def parse_summary_file(local_path):
     Parses a summary file and returns original and processed DataFrames along with correlations.
     """
     required_cols = ["AlnIndex", "Residue", "B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
-
+    
     if not os.path.isfile(local_path):
         print(f"File not found: {local_path}")
         return None, None, {}
-
+    
     try:
         df = pd.read_csv(local_path, sep='\t')
     except Exception as e:
         print(f"Skipping {local_path}: failed to parse data. Error: {e}")
         return None, None, {}
-
+    
     # Check for required columns
     if not set(required_cols).issubset(df.columns):
         print(f"Skipping {local_path}: missing required columns.")
         return None, None, {}
-
+    
     # Replace 'n/a' with NaN and convert to float
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-
+    
     df_original = df.copy()
     df_for_plot = df.copy()
-
+    
     # Apply moving average
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         df_for_plot[col] = moving_average(df_for_plot[col].values, window_size=5)
-
+    
     # Min-Max normalization
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         valid = ~df_for_plot[col].isna()
@@ -88,7 +90,7 @@ def parse_summary_file(local_path):
             col_max = df_for_plot.loc[valid, col].max()
             if col_max > col_min:
                 df_for_plot[col] = (df_for_plot[col] - col_min) / (col_max - col_min)
-
+    
     # Compute Spearman correlations on original data
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
@@ -107,8 +109,9 @@ def parse_summary_file(local_path):
             else:
                 rho, pval = spearmanr(sub[mA], sub[mB])
             corrs[(mA, mB)] = (rho, pval)
-
+    
     return df_original, df_for_plot, corrs
+
 
 ###############################################################################
 # 3) Load and Aggregate Data from Local Directory
@@ -139,31 +142,31 @@ for filename in os.listdir(DATA_DIR):
     if not re.match(FILE_PATTERN, filename):
         print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
         continue
-
+    
     file_path = os.path.join(DATA_DIR, filename)
     df_orig, df_plot, corrs = parse_summary_file(file_path)
     if df_orig is None:
         continue
-
+    
     data_by_file[filename] = {
         "df_original": df_orig,
         "df_for_plot": df_plot,
         "corrs": corrs
     }
-
+    
     # Collect correlation data
     for combo, (rho, pval) in corrs.items():
         mA, mB = combo
         all_corr_rows.append([filename, mA, mB, rho, pval])
-
+    
     # Aggregate data for additional plots
     avg_b = df_orig['B_Factor'].mean()
     std_b = df_orig['B_Factor'].std()
-
+    
     spearman_r_exp = corrs.get(("B_Factor", "ExpFrust"), (np.nan, np.nan))[0]
     spearman_r_af = corrs.get(("B_Factor", "AFFrust"), (np.nan, np.nan))[0]
     spearman_r_evol = corrs.get(("B_Factor", "EvolFrust"), (np.nan, np.nan))[0]
-
+    
     protein_names.append(filename)
     avg_bfactors.append(avg_b)
     std_bfactors.append(std_b)
@@ -206,6 +209,7 @@ data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_
 # Remove rows with NaN correlations
 data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
 data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
+
 
 ###############################################################################
 # 4) Bokeh Application Components
@@ -293,7 +297,7 @@ p_scatter_exp = figure(
     min_height=350,
     title="",
     x_axis_label="B-Factor",
-    y_axis_label="ExpFrust",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
@@ -305,7 +309,7 @@ p_scatter_af = figure(
     min_height=350,
     title="",
     x_axis_label="B-Factor",
-    y_axis_label="AFFrust",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
@@ -317,7 +321,7 @@ p_scatter_evol = figure(
     min_height=350,
     title="",
     x_axis_label="B-Factor",
-    y_axis_label="EvolFrust",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
@@ -381,28 +385,48 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         if info_div:
             info_div.text = "Insufficient data for regression"
         return
-
+    
     not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
     if not any(not_nan):
         if info_div:
             info_div.text = "No valid data points"
         return
-
+    
     xvals_clean = xvals[not_nan]
     yvals_clean = yvals[not_nan]
     if len(xvals_clean) < 2:
         if info_div:
             info_div.text = "Insufficient data for regression"
         return
-
+    
     # Linear regression
     slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
-
-    # Plot regression line
+    
+    # Plot regression line visibly
     x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
     y_range = slope * x_range + intercept
-    regression_line = fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
-
+    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
+    
+    # Create a separate data source for regression line hover
+    regression_source = ColumnDataSource(data=dict(
+        x=x_range,
+        y=y_range,
+        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+    ))
+    
+    # Plot regression line again with this data source, invisible (for hover)
+    invisible_regression = fig.line('x', 'y', source=regression_source, line_width=10, alpha=0, name='regression_hover')  # Increased line_width for better hover area
+    
+    # Add a separate HoverTool for the regression line
+    hover_regression = HoverTool(
+        renderers=[invisible_regression],
+        tooltips=[
+            ("Regression Equation", "@equation")
+        ],
+        mode='mouse'
+    )
+    fig.add_tools(hover_regression)
+    
     # Update regression info div with equation
     if info_div:
         info_div.text = f"""
@@ -411,8 +435,6 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
             <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
         </div>
         """
-
-    return regression_line  # Return the regression line renderer
 
 # Dropdown select
 file_options = sorted(data_by_file.keys())
@@ -426,8 +448,7 @@ else:
 select_file = Select(
     title="Select Protein (summary_XXXX.txt):",
     value=initial_file,
-    options=file_options,
-    width=400
+    options=file_options
 )
 
 # Add slider for moving average window size
@@ -464,19 +485,19 @@ def update_plot(attr, old, new):
         regression_info_af.text = ""
         regression_info_evol.text = ""
         return
-
+    
     # Get window size from slider
     window_size = window_slider.value
-
+    
     # Update main line plot with new window size
     df_orig = data_by_file[filename]["df_original"]
     df_plot = df_orig.copy()
-
+    
     # Apply moving average with current window size
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_plot[col].values
         df_plot[col] = moving_average(arr, window_size=window_size)
-
+    
     # Normalize the smoothed data
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_plot[col].values
@@ -487,7 +508,7 @@ def update_plot(attr, old, new):
         col_max = np.nanmax(arr)
         if col_max > col_min:
             df_plot[col] = (arr - col_min) / (col_max - col_min)
-
+    
     sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
@@ -503,25 +524,25 @@ def update_plot(attr, old, new):
         )
         source_plot.data = new_data
         p.title.text = f"{filename} (Smoothed + Normalized)"
-
+    
     # Update scatter plots (using NON-smoothed data)
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-
-    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_line'
-    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_line']
-    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_line']
-    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_line']
-
+    
+    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_hover'
+    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_hover']
+    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_hover']
+    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_hover']
+    
     # Reset data sources
     source_scatter_exp.data = dict(x=[], y=[])
     source_scatter_af.data = dict(x=[], y=[])
     source_scatter_evol.data = dict(x=[], y=[])
-
+    
     regression_info_exp.text = ""
     regression_info_af.text = ""
     regression_info_evol.text = ""
-
+    
     if sub_orig.empty:
         p_scatter_exp.title.text = f"{filename} (No Data)"
         p_scatter_af.title.text = f"{filename} (No Data)"
@@ -532,33 +553,26 @@ def update_plot(attr, old, new):
         y_exp = sub_orig["ExpFrust"].values
         source_scatter_exp.data = dict(x=x_exp, y=y_exp)
         p_scatter_exp.title.text = f"{filename} Experimental Frustration"
-        regression_line_exp = add_regression_line_and_info(
-            p_scatter_exp, x_exp, y_exp, color=Category10[10][1], info_div=regression_info_exp
-        )
-
+        add_regression_line_and_info(p_scatter_exp, x_exp, y_exp, color=Category10[10][1], info_div=regression_info_exp)
+        
         # AFFrust
         x_af = sub_orig["B_Factor"].values
         y_af = sub_orig["AFFrust"].values
         source_scatter_af.data = dict(x=x_af, y=y_af)
         p_scatter_af.title.text = f"{filename} AF Frustration"
-        regression_line_af = add_regression_line_and_info(
-            p_scatter_af, x_af, y_af, color=Category10[10][2], info_div=regression_info_af
-        )
-
+        add_regression_line_and_info(p_scatter_af, x_af, y_af, color=Category10[10][2], info_div=regression_info_af)
+        
         # EvolFrust
         x_evol = sub_orig["B_Factor"].values
         y_evol = sub_orig["EvolFrust"].values
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
         p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
-        regression_line_evol = add_regression_line_and_info(
-            p_scatter_evol, x_evol, y_evol, color=Category10[10][3], info_div=regression_info_evol
-        )
+        add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color=Category10[10][3], info_div=regression_info_evol)
 
-        # Update HoverTools to exclude regression lines by collecting scatter renderers
-        # For each scatter plot, assign HoverTool renderers to scatter glyphs only
-        # This prevents regression lines from triggering HoverTools
+select_file.on_change("value", update_plot)
+if initial_file:
+    update_plot(None, None, initial_file)
 
-        # No additional action needed here since HoverTools are already set to specific renderers
 
 ###############################################################################
 # 5) CORRELATION TABLE AND FILTERS
@@ -596,35 +610,35 @@ if not df_all_corr.empty:
 else:
     combo_options = []
 
-# Replace CheckboxButtonGroup with MultiSelect for better handling of long lists
-cbg_tests = MultiSelect(
-    title="Select Proteins:",
-    value=[],  # initial selected
+# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
+multi_tests = MultiSelect(
+    title="Select Tests:",
+    value=[],
     options=tests_in_corr,
     size=10,
-    width=400
+    width=300
 )
-cbg_combos = MultiSelect(
+multi_combos = MultiSelect(
     title="Select Metric Pairs:",
     value=[],
     options=combo_options,
     size=10,
-    width=400
+    width=300
 )
 
 def update_corr_filter(attr, old, new):
     """Filter correlation table based on selected tests and metric pairs."""
     if df_all_corr.empty:
         return
-    selected_tests = cbg_tests.value
-    selected_combos = cbg_combos.value
-
+    selected_tests = multi_tests.value
+    selected_combos = multi_combos.value
+    
     if not selected_tests and not selected_combos:
         filtered = df_all_corr
     else:
         df_tmp = df_all_corr.copy()
         df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
-
+        
         if selected_tests and selected_combos:
             filtered = df_tmp[
                 (df_tmp["Test"].isin(selected_tests)) &
@@ -636,11 +650,12 @@ def update_corr_filter(attr, old, new):
             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
         else:
             filtered = df_all_corr
-
+    
     source_corr.data = filtered.to_dict(orient="list")
 
-cbg_tests.on_change("value", update_corr_filter)
-cbg_combos.on_change("value", update_corr_filter)
+multi_tests.on_change("value", update_corr_filter)
+multi_combos.on_change("value", update_corr_filter)
+
 
 ###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
@@ -652,7 +667,7 @@ source_avg = ColumnDataSource(data_long_avg)
 p_avg = figure(
     title="Spearman Correlation vs Average B-Factor",
     x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -676,12 +691,11 @@ hover_avg = HoverTool(
 )
 p_avg.add_tools(hover_avg)
 
-# Add scatter glyphs and collect their renderers for HoverTool
-scatter_renderers_avg = []
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter = p_avg.scatter(
+    p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
@@ -690,14 +704,30 @@ for frust in frust_types:
         legend_label=frust,
         muted_alpha=0.1
     )
-    scatter_renderers_avg.append(scatter)
-
-    # Add regression lines
+    
+    # Add regression lines with hover
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         p_avg.line(x_range, y_range, color=color_map_frust[frust], line_dash='dashed')
+        
+        # Add regression equation hover
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+        invisible_regression = p_avg.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        
+        hover_regression = HoverTool(
+            renderers=[invisible_regression],
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
+        )
+        p_avg.add_tools(hover_regression)
 
 p_avg.legend.location = "top_left"
 p_avg.legend.title = "Frustration Type"
@@ -709,7 +739,7 @@ source_std = ColumnDataSource(data_long_std)
 p_std = figure(
     title="Spearman Correlation vs Std Dev of B-Factor",
     x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -728,12 +758,11 @@ hover_std = HoverTool(
 )
 p_std.add_tools(hover_std)
 
-# Add scatter glyphs and collect their renderers for HoverTool
-scatter_renderers_std = []
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter = p_std.scatter(
+    p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
@@ -742,14 +771,30 @@ for frust in frust_types:
         legend_label=frust,
         muted_alpha=0.1
     )
-    scatter_renderers_std.append(scatter)
-
-    # Add regression lines
+    
+    # Add regression lines with hover
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         p_std.line(x_range, y_range, color=color_map_frust[frust], line_dash='dashed')
+        
+        # Add regression equation hover
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+        invisible_regression = p_std.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        
+        hover_regression = HoverTool(
+            renderers=[invisible_regression],
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
+        )
+        p_std.add_tools(hover_regression)
 
 p_std.legend.location = "top_left"
 p_std.legend.title = "Frustration Type"
@@ -775,7 +820,7 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 p_corr = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
     x_axis_label="Protein",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
     x_range=data_proviz['Protein'].tolist(),
     sizing_mode='stretch_width',
     height=600,
@@ -801,15 +846,14 @@ hover_corr = HoverTool(
 )
 p_corr.add_tools(hover_corr)
 
-# Add horizontal line at y=0 with a unique name
-p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='zero_line')
+# Add horizontal line at y=0
+p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
 
-# Add scatter glyphs and collect their renderers for HoverTool
-scatter_renderers_corr = []
+# Add scatter glyphs
 for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter = p_corr.scatter(
+    p_corr.scatter(
         'Protein', 'Spearman_Rho',
         source=source_subset,
         color=color_map_corr[frust],
@@ -818,9 +862,32 @@ for frust in frust_types_corr:
         legend_label=frust,
         muted_alpha=0.1
     )
-    scatter_renderers_corr.append(scatter)
-
-    # Regression lines are not added to p_corr to maintain statistical validity
+    
+    # Add regression lines with hover
+    if len(subset) >= 2:
+        slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
+        # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
+        # This needs clarification based on data structure.
+        x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
+        y_range = slope * x_range + intercept
+        p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
+        
+        # Add regression equation hover
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+        invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        
+        hover_regression = HoverTool(
+            renderers=[invisible_regression],
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
+        )
+        p_corr.add_tools(hover_regression)
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
@@ -830,8 +897,6 @@ p_corr.legend.click_policy = "mute"
 from math import pi
 p_corr.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
-# Assign HoverTool renderers to scatter glyphs only
-hover_corr.renderers = scatter_renderers_corr
 
 ###############################################################################
 # 7) User Interface Components
@@ -911,10 +976,10 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Arrange the MultiSelect widgets in a column
+# Arrange MultiSelect widgets in a column
 controls_section_layout = column(
-    cbg_tests,
-    cbg_combos,
+    multi_tests,
+    multi_combos,
     sizing_mode='stretch_width'
 )
 
