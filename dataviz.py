@@ -597,62 +597,30 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
-# Create scatter glyphs and regression lines
+# Add HoverTool
+hover_avg = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_avg.add_tools(hover_avg)
+
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    
-    # Add scatter points
-    scatter = p_avg.scatter(
+    p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'
+        muted_alpha=0.1
     )
-    
-    # Add hover for scatter points
-    hover_scatter = HoverTool(
-        renderers=[scatter],
-        tooltips=[
-            ("Protein", "@Protein"),
-            ("Frustration Type", "@Frust_Type"),
-            ("Spearman Rho", "@Spearman_Rho{0.3f}")
-        ],
-        mode='mouse'
-    )
-    p_avg.add_tools(hover_scatter)
-    
-    # Add regression line if enough points
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-        
-        # Add regression line
-        reg_line = p_avg.line(
-            x_range, y_range,
-            line_color=color_map_frust[frust],
-            line_dash='dashed',
-            name=f'regression_line_{frust}'
-        )
-        
-        # Add hover for regression line
-        hover_reg = HoverTool(
-            renderers=[reg_line],
-            tooltips=[
-                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
-            ],
-            mode='mouse'
-        )
-        p_avg.add_tools(hover_reg)
-
-p_avg.legend.location = "top_left"
-p_avg.legend.title = "Frustration Type"
-p_avg.legend.click_policy = "mute"
     
     # Add regression lines with hover
     if len(subset) >= 2:
@@ -660,21 +628,25 @@ p_avg.legend.click_policy = "mute"
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Add the regression line
+        # Create a single regression line with hover area
         regression_line = p_avg.line(
             x_range, y_range,
             line_color=color_map_frust[frust],
             line_dash='dashed',
+            line_width=1,
+            line_alpha=0.8,
+            hover_line_color=color_map_frust[frust],
+            hover_line_alpha=1.0,
+            hover_line_width=2,
             name=f'regression_line_{frust}'
         )
-        
-        # Only add the regression equation hover
+
+        # Define a simpler hover tool
         hover_regression = HoverTool(
-            tooltips=[
-                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
-            ],
             renderers=[regression_line],
-            mode='mouse'
+            tooltips=f"y = {slope:.3f}x + {intercept:.3f}",
+            mode='mouse',
+            attachment="vertical"
         )
         p_avg.add_tools(hover_regression)
 
@@ -696,62 +668,30 @@ p_std = figure(
     active_scroll=None
 )
 
-# Create scatter glyphs and regression lines
+# Add HoverTool
+hover_std = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_std.add_tools(hover_std)
+
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    
-    # Add scatter points
-    scatter = p_std.scatter(
+    p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'
+        muted_alpha=0.1
     )
-    
-    # Add hover for scatter points
-    hover_scatter = HoverTool(
-        renderers=[scatter],
-        tooltips=[
-            ("Protein", "@Protein"),
-            ("Frustration Type", "@Frust_Type"),
-            ("Spearman Rho", "@Spearman_Rho{0.3f}")
-        ],
-        mode='mouse'
-    )
-    p_std.add_tools(hover_scatter)
-    
-    # Add regression line if enough points
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-        
-        # Add regression line
-        reg_line = p_std.line(
-            x_range, y_range,
-            line_color=color_map_frust[frust],
-            line_dash='dashed',
-            name=f'regression_line_{frust}'
-        )
-        
-        # Add hover for regression line
-        hover_reg = HoverTool(
-            renderers=[reg_line],
-            tooltips=[
-                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
-            ],
-            mode='mouse'
-        )
-        p_std.add_tools(hover_reg)
-
-p_std.legend.location = "top_left"
-p_std.legend.title = "Frustration Type"
-p_std.legend.click_policy = "mute"
     
     # Add regression lines with hover
     if len(subset) >= 2:
@@ -759,21 +699,25 @@ p_std.legend.click_policy = "mute"
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Add the regression line
+        # Create a single regression line with hover area
         regression_line = p_std.line(
             x_range, y_range,
             line_color=color_map_frust[frust],
             line_dash='dashed',
+            line_width=1,
+            line_alpha=0.8,
+            hover_line_color=color_map_frust[frust],
+            hover_line_alpha=1.0,
+            hover_line_width=2,
             name=f'regression_line_{frust}'
         )
-        
-        # Only add the regression equation hover
+
+        # Define a simpler hover tool
         hover_regression = HoverTool(
-            tooltips=[
-                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
-            ],
             renderers=[regression_line],
-            mode='mouse'
+            tooltips=f"y = {slope:.3f}x + {intercept:.3f}",
+            mode='mouse',
+            attachment="vertical"
         )
         p_std.add_tools(hover_regression)
 
