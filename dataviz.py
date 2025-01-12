@@ -667,7 +667,7 @@ source_avg = ColumnDataSource(data_long_avg)
 p_avg = figure(
     title="Spearman Correlation vs Average B-Factor",
     x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -710,18 +710,25 @@ for frust in frust_types:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-        p_avg.line(x_range, y_range, color=color_map_frust[frust], line_dash='dashed')
         
-        # Add regression equation hover
+        # Create a single source for both the visible line and hover
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
-        invisible_regression = p_avg.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        
+        # Add the visible regression line with hover functionality
+        regression_line = p_avg.line(
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust[frust], 
+            line_dash='dashed',
+            name=f'regression_line_{frust}'
+        )
         
         hover_regression = HoverTool(
-            renderers=[invisible_regression],
+            renderers=[regression_line],
             tooltips=[
                 ("Regression Equation", "@equation")
             ],
@@ -739,7 +746,7 @@ source_std = ColumnDataSource(data_long_std)
 p_std = figure(
     title="Spearman Correlation vs Std Dev of B-Factor",
     x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -777,18 +784,25 @@ for frust in frust_types:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-        p_std.line(x_range, y_range, color=color_map_frust[frust], line_dash='dashed')
         
-        # Add regression equation hover
+        # Create a single source for both the visible line and hover
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
-        invisible_regression = p_std.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+        
+        # Add the visible regression line with hover functionality
+        regression_line = p_std.line(
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust[frust], 
+            line_dash='dashed',
+            name=f'regression_line_{frust}'
+        )
         
         hover_regression = HoverTool(
-            renderers=[invisible_regression],
+            renderers=[regression_line],
             tooltips=[
                 ("Regression Equation", "@equation")
             ],
@@ -820,7 +834,7 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 p_corr = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
     x_axis_label="Protein",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=data_proviz['Protein'].tolist(),
     sizing_mode='stretch_width',
     height=600,
@@ -862,32 +876,40 @@ for frust in frust_types_corr:
         legend_label=frust,
         muted_alpha=0.1
     )
+
+# Add mean lines for each frustration type
+for frust in frust_types_corr:
+    subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
+    mean_value = subset['Spearman_Rho'].mean()
     
-    # # Add regression lines with hover
-    # if len(subset) >= 2:
-    #     slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
-    #     # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
-    #     # This needs clarification based on data structure.
-    #     x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
-    #     y_range = slope * x_range + intercept
-    #     p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
-        
-    #     # Add regression equation hover
-    #     regression_source = ColumnDataSource(data=dict(
-    #         x=x_range,
-    #         y=y_range,
-    #         equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-    #     ))
-    #     invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
-        
-    #     hover_regression = HoverTool(
-    #         renderers=[invisible_regression],
-    #         tooltips=[
-    #             ("Regression Equation", "@equation")
-    #         ],
-    #         mode='mouse'
-    #     )
-    #     p_corr.add_tools(hover_regression)
+    # Create source for the mean line with hover information
+    mean_source = ColumnDataSource(data=dict(
+        x=[-0.5, len(data_proviz['Protein']) - 0.5],
+        y=[mean_value, mean_value],
+        mean_value=[f"{mean_value:.3f}"] * 2,
+        frust_type=[frust] * 2
+    ))
+    
+    # Add mean line with hover
+    mean_line = p_corr.line(
+        'x', 'y',
+        source=mean_source,
+        color=color_map_corr[frust],
+        line_width=2,
+        line_dash='dashed',
+        name=f'mean_line_{frust}'
+    )
+    
+    # Add hover tool for mean line
+    mean_hover = HoverTool(
+        renderers=[mean_line],
+        tooltips=[
+            ("Frustration Type", "@frust_type"),
+            ("Mean Correlation", "@mean_value")
+        ],
+        mode='mouse'
+    )
+    p_corr.add_tools(mean_hover)
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
@@ -896,7 +918,6 @@ p_corr.legend.click_policy = "mute"
 # Rotate x-axis labels to prevent overlapping
 from math import pi
 p_corr.xaxis.major_label_orientation = pi / 4  # 45 degrees
-
 
 ###############################################################################
 # 7) User Interface Components
