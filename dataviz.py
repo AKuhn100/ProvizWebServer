@@ -25,7 +25,7 @@ FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove if needed
 # (Optional) Specify a default file to visualize on startup
 # This should match the exact filename (e.g., "summary_1E6X.txt")
 # Or set to "" to automatically select the first available file
-DEFAULT_FILE = "summary_test001.txt"  # Change this to your preferred default (or "")
+DEFAULT_FILE = ""  # Set to "" to pick the first available file
 
 # Define shared color mapping for consistent coloring across all plots
 FRUSTRATION_COLORS = {
@@ -113,12 +113,12 @@ def parse_summary_file(local_path):
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if not sub.empty:
-        for col in POSSIBLE_FRUST_COLUMNS:
-            if sub[col].nunique() < 2 or sub['B_Factor'].nunique() < 2:
+        for frust in POSSIBLE_FRUST_COLUMNS:
+            if sub[frust].nunique() < 2 or sub['B_Factor'].nunique() < 2:
                 rho, pval = np.nan, np.nan
             else:
-                rho, pval = spearmanr(sub['B_Factor'], sub[col])
-            corrs[col] = (rho, pval)
+                rho, pval = spearmanr(sub['B_Factor'], sub[frust])
+            corrs[frust] = (rho, pval)
     return df_original, df_for_plot, corrs
 
 def compute_proviz_data(data_by_file):
@@ -463,7 +463,7 @@ def update_plot(attr, old, new):
     
     # Update main line plot with new window size
     df_orig = data_by_file[filename]["df_original"]
-    df_plot = df_orig.copy()
+    df_plot = data_by_file[filename]["df_plot"].copy()  # Use pre-smoothed data
     
     # Apply moving average with current window size
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
@@ -539,356 +539,305 @@ def update_plot(attr, old, new):
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
         p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
         add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color="#d62728", info_div=regression_info_evol)
-
-select_file.on_change("value", update_plot)
-if initial_file:
-    update_plot(None, None, initial_file)
-
-# --- Additional Plots Below Unity iframe and Above Spearman Table ---
-# Prepare Proviz Data
-proviz_source = ColumnDataSource(data_proviz)
-
-# Spearman Rho vs Average B-Factor
-plot_avg_bfactor = figure(
-    title="Spearman Rho vs. Average B-Factor",
-    x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Rho",
-    sizing_mode='stretch_width',
-    height=400,
-    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
-    active_drag="box_zoom",
-    active_scroll=None
-)
-
-for frust in POSSIBLE_FRUST_COLUMNS:
-    subset = proviz_source.to_df()[["Avg_B_Factor", f"Spearman_{frust}"]].dropna()
-    plot_avg_bfactor.circle(
-        x='Avg_B_Factor', y=f"Spearman_{frust}",
-        source=ColumnDataSource(subset),
-        color=FRUSTRATION_COLORS.get(frust, "#000000"),
-        size=8,
-        legend_label=frust
+    
+    select_file.on_change("value", update_plot)
+    if initial_file:
+        update_plot(None, None, initial_file)
+    
+    # --- Additional Plots Below Unity iframe and Above Spearman Table ---
+    # Prepare Proviz Data
+    proviz_source = ColumnDataSource(data_proviz)
+    
+    # Spearman Rho vs Average B-Factor
+    plot_avg_bfactor = figure(
+        title="Spearman Rho vs. Average B-Factor",
+        x_axis_label="Average B-Factor",
+        y_axis_label="Spearman Rho",
+        sizing_mode='stretch_width',
+        height=400,
+        tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+        active_drag="box_zoom",
+        active_scroll=None
     )
     
-plot_avg_bfactor.legend.title = "Frustration Metrics"
-plot_avg_bfactor.legend.location = "top_left"
-plot_avg_bfactor.legend.click_policy = "hide"
-
-# Spearman Rho vs Std Dev B-Factor
-plot_std_bfactor = figure(
-    title="Spearman Rho vs. Std Dev of B-Factor",
-    x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Rho",
-    sizing_mode='stretch_width',
-    height=400,
-    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
-    active_drag="box_zoom",
-    active_scroll=None
-)
-
-for frust in POSSIBLE_FRUST_COLUMNS:
-    subset = proviz_source.to_df()[["Std_B_Factor", f"Spearman_{frust}"]].dropna()
-    plot_std_bfactor.circle(
-        x='Std_B_Factor', y=f"Spearman_{frust}",
-        source=ColumnDataSource(subset),
-        color=FRUSTRATION_COLORS.get(frust, "#000000"),
-        size=8,
-        legend_label=frust
+    for frust in POSSIBLE_FRUST_COLUMNS:
+        subset = data_proviz[['Avg_B_Factor', f"Spearman_{frust}"]].dropna()
+        source_subset = ColumnDataSource(subset)
+        plot_avg_bfactor.circle(
+            x='Avg_B_Factor', y=f"Spearman_{frust}",
+            source=source_subset,
+            color=FRUSTRATION_COLORS.get(frust, "#000000"),
+            size=8,
+            legend_label=frust
+        )
+    
+    plot_avg_bfactor.legend.title = "Frustration Metrics"
+    plot_avg_bfactor.legend.location = "top_left"
+    plot_avg_bfactor.legend.click_policy = "hide"
+    
+    # Spearman Rho vs Std Dev B-Factor
+    plot_std_bfactor = figure(
+        title="Spearman Rho vs. Std Dev of B-Factor",
+        x_axis_label="Standard Deviation of B-Factor",
+        y_axis_label="Spearman Rho",
+        sizing_mode='stretch_width',
+        height=400,
+        tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+        active_drag="box_zoom",
+        active_scroll=None
     )
     
-plot_std_bfactor.legend.title = "Frustration Metrics"
-plot_std_bfactor.legend.location = "top_left"
-plot_std_bfactor.legend.click_policy = "hide"
-
-# Spearman Rho per Metric per Protein (Heatmap Style)
-# For simplicity, we'll create separate bars for each metric
-from bokeh.transform import dodge
-from bokeh.palettes import Category10
-
-heatmap_source = ColumnDataSource(df_all_corr)
-
-heatmap = figure(
-    title="Spearman Rho per Frustration Metric per Protein",
-    x_range=sorted(data_proviz["Protein"].unique()),
-    y_range=["ExpFrust", "AFFrust", "EvolFrust"],
-    x_axis_label="Protein",
-    y_axis_label="Frustration Metric",
-    sizing_mode='stretch_width',
-    height=600,
-    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
-    toolbar_location="above"
-)
-
-# Assign colors based on Metric
-colors = [FRUSTRATION_COLORS.get(metric, "#000000") for metric in heatmap_source.data["Metric"]]
-
-heatmap.circle(
-    x='Test', y='Metric', size=20, source=heatmap_source,
-    color=colors, alpha=0.7,
-    legend_field='Metric',
-    hover_fill_color='color',
-    hover_alpha=1.0
-)
-
-heatmap.legend.title = "Frustration Metrics"
-heatmap.legend.location = "top_left"
-heatmap.legend.click_policy = "hide"
-
-# Add HoverTool for Heatmap
-heat_hover = HoverTool(
-    tooltips=[
-        ("Protein", "@Test"),
-        ("Metric", "@Metric"),
-        ("Spearman Rho", "@Rho{0.3f}"),
-        ("p-value", "@Pval{0.2e}")
-    ],
-    renderers=[]
-)
-heatmap.add_tools(heat_hover)
-
-###############################################################################
-# 6) CORRELATION TABLE AND FILTERS
-###############################################################################
-if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="Metric", title="Metric"),
-        TableColumn(field="Rho", title="Spearman Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], Metric=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-else:
-    source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="Metric", title="Metric"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-
-# (E) FILTERS for correlation table
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['Metric']} vs B-Factor" 
-        for _, row in df_all_corr.iterrows()
-    })
-else:
-    combo_options = []
-
-cbg_tests = CheckboxButtonGroup(
-    labels=tests_in_corr,
-    active=[]
-)
-cbg_combos = CheckboxButtonGroup(
-    labels=combo_options,
-    active=[]
-)
-
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
-    if df_all_corr.empty:
-        return
-    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
-    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
+    for frust in POSSIBLE_FRUST_COLUMNS:
+        subset = data_proviz[['Std_B_Factor', f"Spearman_{frust}"]].dropna()
+        source_subset = ColumnDataSource(subset)
+        plot_std_bfactor.circle(
+            x='Std_B_Factor', y=f"Spearman_{frust}",
+            source=source_subset,
+            color=FRUSTRATION_COLORS.get(frust, "#000000"),
+            size=8,
+            legend_label=frust
+        )
     
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['Metric']} vs B-Factor", axis=1)
-        
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
+    plot_std_bfactor.legend.title = "Frustration Metrics"
+    plot_std_bfactor.legend.location = "top_left"
+    plot_std_bfactor.legend.click_policy = "hide"
     
-    source_corr.data = filtered.to_dict(orient="list")
+    # Spearman Rho per Metric per Protein (Heatmap Style)
+    heatmap_source = ColumnDataSource(df_all_corr)
+    
+    heatmap = figure(
+        title="Spearman Rho per Frustration Metric per Protein",
+        x_range=sorted(data_proviz["Protein"].unique()),
+        y_range=POSSIBLE_FRUST_COLUMNS,
+        x_axis_label="Protein",
+        y_axis_label="Frustration Metric",
+        sizing_mode='stretch_width',
+        height=600,
+        tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+        toolbar_location="above"
+    )
+    
+    # Assign colors based on Metric
+    colors = [FRUSTRATION_COLORS.get(metric, "#000000") for metric in heatmap_source.data.get("Metric", [])]
+    
+    heatmap.circle(
+        x='Test', y='Metric', size=20, source=heatmap_source,
+        color=colors, alpha=0.7,
+        legend_field='Metric',
+        hover_color='color',
+        hover_alpha=1.0
+    )
+    
+    heatmap.legend.title = "Frustration Metrics"
+    heatmap.legend.location = "top_left"
+    heatmap.legend.click_policy = "hide"
+    
+    # Add HoverTool for Heatmap
+    heat_hover = HoverTool(
+        tooltips=[
+            ("Protein", "@Test"),
+            ("Metric", "@Metric"),
+            ("Spearman Rho", "@Rho{0.3f}"),
+            ("p-value", "@Pval{0.2e}")
+        ],
+        renderers=[]
+    )
+    heatmap.add_tools(heat_hover)
+    
+    # Add horizontal lines at y=0 for reference
+    heatmap.line(x=[-0.5, len(heatmap.x_range.factors)-0.5], y=[0,0], line_color="Gray", line_dash="dashed")
+    
+    # --- Additional Plots Layout ---
+    additional_plots = column(
+        plot_avg_bfactor,
+        plot_std_bfactor,
+        heatmap,
+        sizing_mode='stretch_width',
+        spacing=20
+    )
+    
+    # --- Unity Container ---
+    # Unity Container remains unchanged
+    description_visualizer = Div(text="""
+        <h2>Protein Visualizer Instructions</h2>
+        <p>
+            The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
+        </p>
+        <ul>
+            <li><strong>Oscillation (O):</strong> Ribbon oscillates with amplitude/frequency mapped to average B-factor.</li>
+            <li><strong>Color (ExpFrust):</strong> Ribbon color indicates experimental frustration.</li>
+            <li><strong>Luminosity (EvolFrust):</strong> Indicates evolutionary frustration.</li>
+            <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
+            <li><strong>Navigation:</strong> <code>W/A/S/D</code>, <code>Shift</code>, <code>Space</code> to move the camera, <code>C</code> to zoom, etc.</li>
+            <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. <code>O</code> toggles oscillation or sets height by B-factor in the unfolded state.</li>
+            <li><strong>Pause (P):</strong> Pauses the scene so you can select another protein.</li>
+        </ul>
+    """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
 
-cbg_tests.on_change("active", update_corr_filter)
-cbg_combos.on_change("active", update_corr_filter)
-
-###############################################################################
-# 7) Layout Integration
-###############################################################################
-# Add header and description
-header = Div(text="""
-    <h1>Evolutionary Frustration</h1>
-    <p>
-        Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores 
-        and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. 
-        By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics, 
-        we aim to validate sequence-derived evolutionary constraints in representing protein flexibility.
-    </p>
-    <ul>
-        <li><strong>Experimental Frustration</strong>: Derived via the Frustratometer using a crystal structure.</li>
-        <li><strong>AF Frustration</strong>: Derived via the Frustratometer using an AlphaFold structure.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived directly from sequence alignment (no structure needed).</li>
-    </ul>
-    <p>
-        The correlation table below shows Spearman correlation coefficients and p-values for <em>non-smoothed</em> data. 
-        The curves in the main plot are <em>smoothed</em> with a simple moving average and 
-        <strong>min–max normalized</strong> (per protein). Normalization does not affect Spearman correlations but be mindful 
-        that min–max scaling is not suitable for comparing magnitudes <em>across</em> proteins.
-    </p>
-    <h3>Contributors</h3>
-    <p>
-        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, 
-        George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
-        <sup>1</sup>Department of Physics, Rice University<br>
-        <sup>2</sup>Department of Chemistry, Rice University<br>
-        <sup>3</sup>Department of Biosciences, Rice University<br>
-        <sup>4</sup>Center for Theoretical Biological Physics, Rice University
-    </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
-
-# Unity Container
-description_visualizer = Div(text="""
-    <h2>Protein Visualizer Instructions</h2>
-    <p>
-        The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
-    </p>
-    <ul>
-        <li><strong>Oscillation (O):</strong> Ribbon oscillates with amplitude/frequency mapped to average B-factor.</li>
-        <li><strong>Color (ExpFrust):</strong> Ribbon color indicates experimental frustration.</li>
-        <li><strong>Luminosity (EvolFrust):</strong> Indicates evolutionary frustration.</li>
-        <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
-        <li><strong>Navigation:</strong> <code>W/A/S/D</code>, <code>Shift</code>, <code>Space</code> to move the camera, <code>C</code> to zoom, etc.</li>
-        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. <code>O</code> toggles oscillation or sets height by B-factor in the unfolded state.</li>
-        <li><strong>Pause (P):</strong> Pauses the scene so you can select another protein.</li>
-    </ul>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
-
-unity_iframe = Div(
-    text="""
-    <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
-        <iframe 
-            src="https://igotintogradschool2025.site/unity/"
-            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
-                   box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
-        </iframe>
-    </div>
-    """,
-    sizing_mode='stretch_width',
-    styles={'margin-top': '20px'}
-)
-unity_iframe.visible = True
-
-unity_container = column(
-    description_visualizer,
-    unity_iframe,
-    sizing_mode='stretch_width'
-)
-
-# --- Additional Plots ---
-additional_plots = column(
-    plot_avg_bfactor,
-    plot_std_bfactor,
-    heatmap,
-    sizing_mode='stretch_width',
-    spacing=20
-)
-
-# Controls section
-controls_section = column(
-    Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
-    row(
-        Div(text="<i>Select Proteins:</i>", width=150),
-        cbg_tests,
+    unity_iframe = Div(
+        text="""
+        <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
+            <iframe 
+                src="https://igotintogradschool2025.site/unity/"
+                style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
+                       box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen>
+            </iframe>
+        </div>
+        """,
+        sizing_mode='stretch_width',
+        styles={'margin-top': '20px'}
+    )
+    unity_iframe.visible = True
+    
+    unity_container = column(
+        description_visualizer,
+        unity_iframe,
         sizing_mode='stretch_width'
-    ),
-    row(
-        Div(text="<i>Select Metric Pairs:</i>", width=150),
-        cbg_combos,
+    )
+    
+    # --- Additional Plots (Integrated Below Unity iframe and Above Spearman Table) ---
+    # These plots have been created above and are stored in 'additional_plots'
+
+    # --- Layout Integration ---
+    # Main layout with slider and additional plots
+    visualization_section = column(
+        select_file,
+        window_slider,
+        p,
+        scatter_row,
+        unity_container,
+        additional_plots,  # Integrated additional plots here
+        sizing_mode='stretch_width',
+        css_classes=['visualization-section']
+    )
+    
+    # --- Correlation Table and Filters ---
+    controls_section = column(
+        Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
+        row(
+            Div(text="<i>Select Proteins:</i>", width=150),
+            cbg_tests,
+            sizing_mode='stretch_width'
+        ),
+        row(
+            Div(text="<i>Select Metric Pairs:</i>", width=150),
+            cbg_combos,
+            sizing_mode='stretch_width'
+        ),
         sizing_mode='stretch_width'
-    ),
-    sizing_mode='stretch_width'
-)
-
-# Custom styles
-custom_styles = Div(text="""
-    <style>
-        .visualization-section {
-            margin: 20px 0;
-            width: 100%;
-        }
-        .controls-row {
-            margin: 10px 0;
-            gap: 10px;
-        }
-        .bk-root {
-            width: 100% !important;
-        }
-    </style>
-""")
-
-# Main layout with slider and additional plots
-visualization_section = column(
-    select_file,
-    window_slider,
-    p,
-    scatter_row,
-    unity_container,
-    additional_plots,  # Integrated additional plots here
-    sizing_mode='stretch_width',
-    css_classes=['visualization-section']
-)
-
-main_layout = column(
-    custom_styles,
-    header,
-    visualization_section,
-    controls_section,
-    data_table,
-    sizing_mode='stretch_width'
-)
-
-# --- Correlation Table Data Filtering ---
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
-    if df_all_corr.empty:
-        return
-    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
-    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
+    )
     
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['Metric']} vs B-Factor", axis=1)
+    # Custom styles
+    custom_styles = Div(text="""
+        <style>
+            .visualization-section {
+                margin: 20px 0;
+                width: 100%;
+            }
+            .controls-row {
+                margin: 10px 0;
+                gap: 10px;
+            }
+            .bk-root {
+                width: 100% !important;
+            }
+        </style>
+    """)
+
+    # --- Header ---
+    header = Div(text="""
+        <h1>Evolutionary Frustration</h1>
+        <p>
+            Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores 
+            and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. 
+            By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics, 
+            we aim to validate sequence-derived evolutionary constraints in representing protein flexibility.
+        </p>
+        <ul>
+            <li><strong>Experimental Frustration</strong>: Derived via the Frustratometer using a crystal structure.</li>
+            <li><strong>AF Frustration</strong>: Derived via the Frustratometer using an AlphaFold structure.</li>
+            <li><strong>Evolutionary Frustration</strong>: Derived directly from sequence alignment (no structure needed).</li>
+        </ul>
+        <p>
+            The correlation table below shows Spearman correlation coefficients and p-values for <em>non-smoothed</em> data. 
+            The curves in the main plot are <em>smoothed</em> with a simple moving average and 
+            <strong>min–max normalized</strong> (per protein). Normalization does not affect Spearman correlations but be mindful 
+            that min–max scaling is not suitable for comparing magnitudes <em>across</em> proteins.
+        </p>
+        <h3>Contributors</h3>
+        <p>
+            <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, 
+            George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
+            <sup>1</sup>Department of Physics, Rice University<br>
+            <sup>2</sup>Department of Chemistry, Rice University<br>
+            <sup>3</sup>Department of Biosciences, Rice University<br>
+            <sup>4</sup>Center for Theoretical Biological Physics, Rice University
+        </p>
+    """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
+
+    # --- Final Layout ---
+    main_layout = column(
+        custom_styles,
+        header,
+        visualization_section,
+        controls_section,
+        data_table,
+        sizing_mode='stretch_width'
+    )
+
+    # --- Correlation Table Data Filtering ---
+    if not df_all_corr.empty:
+        # Define the filter options
+        tests_in_corr = sorted(df_all_corr["Test"].unique())
+        combo_options = sorted({
+            f"{row['Metric']} vs B-Factor" 
+            for _, row in df_all_corr.iterrows()
+        })
         
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
-    
-    source_corr.data = filtered.to_dict(orient="list")
+        cbg_tests = CheckboxButtonGroup(
+            labels=tests_in_corr,
+            active=[]
+        )
+        cbg_combos = CheckboxButtonGroup(
+            labels=combo_options,
+            active=[]
+        )
+        
+        def update_corr_filter(attr, old, new):
+            """Filter correlation table based on selected tests and metric pairs."""
+            selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
+            selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
+            
+            if not selected_tests and not selected_combos:
+                filtered = df_all_corr
+            else:
+                df_tmp = df_all_corr.copy()
+                df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['Metric']} vs B-Factor", axis=1)
+                
+                if selected_tests and selected_combos:
+                    filtered = df_tmp[
+                        (df_tmp["Test"].isin(selected_tests)) &
+                        (df_tmp["combo_str"].isin(selected_combos))
+                    ].drop(columns=["combo_str"])
+                elif selected_tests:
+                    filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+                elif selected_combos:
+                    filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+                else:
+                    filtered = df_all_corr
+            
+            source_corr.data = filtered.to_dict(orient="list")
+        
+        cbg_tests.on_change("active", update_corr_filter)
+        cbg_combos.on_change("active", update_corr_filter)
+    else:
+        cbg_tests = CheckboxButtonGroup(labels=[], active=[])
+        cbg_combos = CheckboxButtonGroup(labels=[], active=[])
 
-###############################################################################
-# 8) Add to Document and Finalize
-###############################################################################
-# Set up document
-curdoc().add_root(main_layout)
-curdoc().title = "Evolutionary Frustration"
+    # --- Finalizing Document ---
+    # Add to document
+    curdoc().add_root(main_layout)
+    curdoc().title = "Evolutionary Frustration"
 
-###############################################################################
-# End of Script
-###############################################################################
