@@ -680,22 +680,12 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
-# Add HoverTool
-hover_avg = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    mode='mouse'
-)
-p_avg.add_tools(hover_avg)
-
-# Add scatter glyphs
+# Add scatter glyphs and collect renderers for hover
+scatter_renderers = []
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    p_avg.scatter(
+    scatter_renderer = p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
@@ -704,6 +694,19 @@ for frust in frust_types:
         legend_label=frust,
         muted_alpha=0.1
     )
+    scatter_renderers.append(scatter_renderer)
+
+# Add HoverTool specifically for scatter points
+hover_avg = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    renderers=scatter_renderers,
+    mode='mouse'
+)
+p_avg.add_tools(hover_avg)
     
     # Add regression lines with hover
     if len(subset) >= 2:
@@ -747,22 +750,12 @@ p_std = figure(
     active_scroll=None
 )
 
-# Add HoverTool
-hover_std = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    mode='mouse'
-)
-p_std.add_tools(hover_std)
-
-# Add scatter glyphs
+# Add scatter glyphs and collect renderers for hover
+scatter_renderers = []
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    p_std.scatter(
+    scatter_renderer = p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
@@ -771,6 +764,19 @@ for frust in frust_types:
         legend_label=frust,
         muted_alpha=0.1
     )
+    scatter_renderers.append(scatter_renderer)
+
+# Add HoverTool specifically for scatter points
+hover_std = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    renderers=scatter_renderers,
+    mode='mouse'
+)
+p_std.add_tools(hover_std)
     
     # Add regression lines with hover
     if len(subset) >= 2:
