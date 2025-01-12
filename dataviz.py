@@ -574,87 +574,87 @@ if initial_file:
     update_plot(None, None, initial_file)
 
 
-###############################################################################
-# 5) CORRELATION TABLE AND FILTERS
-###############################################################################
+# ###############################################################################
+# # 5) CORRELATION TABLE AND FILTERS
+# ###############################################################################
 
-# (D) CORRELATION TABLE
-if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-else:
-    source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+# # (D) CORRELATION TABLE
+# if df_all_corr.empty:
+#     columns = [
+#         TableColumn(field="Test", title="Test"),
+#         TableColumn(field="MetricA", title="MetricA"),
+#         TableColumn(field="MetricB", title="MetricB"),
+#         TableColumn(field="Rho", title="Rho"),
+#         TableColumn(field="Pval", title="p-value")
+#     ]
+#     source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+#     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+# else:
+#     source_corr = ColumnDataSource(df_all_corr)
+#     columns = [
+#         TableColumn(field="Test", title="Test"),
+#         TableColumn(field="MetricA", title="MetricA"),
+#         TableColumn(field="MetricB", title="MetricB"),
+#         TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+#         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+#     ]
+#     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# (E) FILTERS for correlation table
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
-        for _, row in df_all_corr.iterrows()
-    })
-else:
-    combo_options = []
+# # (E) FILTERS for correlation table
+# tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+# if not df_all_corr.empty:
+#     combo_options = sorted({
+#         f"{row['MetricA']} vs {row['MetricB']}" 
+#         for _, row in df_all_corr.iterrows()
+#     })
+# else:
+#     combo_options = []
 
-# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
-multi_tests = MultiSelect(
-    title="Select Tests:",
-    value=[],
-    options=tests_in_corr,
-    size=10,
-    width=300
-)
-multi_combos = MultiSelect(
-    title="Select Metric Pairs:",
-    value=[],
-    options=combo_options,
-    size=10,
-    width=300
-)
+# # Replaced CheckboxButtonGroup with MultiSelect for better layout handling
+# multi_tests = MultiSelect(
+#     title="Select Tests:",
+#     value=[],
+#     options=tests_in_corr,
+#     size=10,
+#     width=300
+# )
+# multi_combos = MultiSelect(
+#     title="Select Metric Pairs:",
+#     value=[],
+#     options=combo_options,
+#     size=10,
+#     width=300
+# )
 
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
-    if df_all_corr.empty:
-        return
-    selected_tests = multi_tests.value
-    selected_combos = multi_combos.value
+# def update_corr_filter(attr, old, new):
+#     """Filter correlation table based on selected tests and metric pairs."""
+#     if df_all_corr.empty:
+#         return
+#     selected_tests = multi_tests.value
+#     selected_combos = multi_combos.value
     
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+#     if not selected_tests and not selected_combos:
+#         filtered = df_all_corr
+#     else:
+#         df_tmp = df_all_corr.copy()
+#         df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
         
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
+#         if selected_tests and selected_combos:
+#             filtered = df_tmp[
+#                 (df_tmp["Test"].isin(selected_tests)) &
+#                 (df_tmp["combo_str"].isin(selected_combos))
+#             ].drop(columns=["combo_str"])
+#         elif selected_tests:
+#             filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+#         elif selected_combos:
+#             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+#         else:
+#             filtered = df_all_corr
     
-    source_corr.data = filtered.to_dict(orient="list")
+#     source_corr.data = filtered.to_dict(orient="list")
 
-multi_tests.on_change("value", update_corr_filter)
-multi_combos.on_change("value", update_corr_filter)
+# multi_tests.on_change("value", update_corr_filter)
+# multi_combos.on_change("value", update_corr_filter)
 
 
 ###############################################################################
@@ -680,8 +680,8 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
-# First, create scatter plots with their hover tool
-hover_scatter_avg = HoverTool(
+# Add HoverTool
+hover_avg = HoverTool(
     tooltips=[
         ("Protein", "@Protein"),
         ("Frustration Type", "@Frust_Type"),
@@ -689,21 +689,20 @@ hover_scatter_avg = HoverTool(
     ],
     mode='mouse'
 )
-p_avg.add_tools(hover_scatter_avg)
+p_avg.add_tools(hover_avg)
 
-# Add scatter glyphs with named renderers
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter = p_avg.scatter(
+    p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'  # Add name to the renderer
+        muted_alpha=0.1
     )
     
     # Add regression lines with hover
@@ -712,12 +711,14 @@ for frust in frust_types:
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
+        # Create a single source for both the visible line and hover
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
         
+        # Add the visible regression line with hover functionality
         regression_line = p_avg.line(
             'x', 'y', 
             source=regression_source, 
@@ -753,8 +754,8 @@ p_std = figure(
     active_scroll=None
 )
 
-# First, create scatter plots with their hover tool
-hover_scatter_std = HoverTool(
+# Add HoverTool
+hover_std = HoverTool(
     tooltips=[
         ("Protein", "@Protein"),
         ("Frustration Type", "@Frust_Type"),
@@ -762,21 +763,20 @@ hover_scatter_std = HoverTool(
     ],
     mode='mouse'
 )
-p_std.add_tools(hover_scatter_std)
+p_std.add_tools(hover_std)
 
-# Add scatter glyphs with named renderers
+# Add scatter glyphs
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter = p_std.scatter(
+    p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'  # Add name to the renderer
+        muted_alpha=0.1
     )
     
     # Add regression lines with hover
@@ -785,12 +785,14 @@ for frust in frust_types:
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
+        # Create a single source for both the visible line and hover
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
         
+        # Add the visible regression line with hover functionality
         regression_line = p_std.line(
             'x', 'y', 
             source=regression_source, 
