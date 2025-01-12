@@ -680,16 +680,18 @@ checkbox_combos.on_change("active", update_corr_filter_checkbox)
 # Add header for filters
 filters_header = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Create a scrollable Div for "Select Tests"
-tests_scroll = Div(
-    children=[checkbox_tests],
-    styles={'height': '150px', 'overflow-y': 'auto', 'border': '1px solid #ddd', 'padding': '5px', 'border-radius': '4px'}
+# Create a scrollable column for "Select Tests"
+tests_scroll = column(
+    checkbox_tests,
+    sizing_mode='stretch_width',
+    css_classes=['scrollable-container']
 )
 
-# Create a scrollable Div for "Select Metric Pairs"
-combos_scroll = Div(
-    children=[checkbox_combos],
-    styles={'height': '150px', 'overflow-y': 'auto', 'border': '1px solid #ddd', 'padding': '5px', 'border-radius': '4px'}
+# Create a scrollable column for "Select Metric Pairs"
+combos_scroll = column(
+    checkbox_combos,
+    sizing_mode='stretch_width',
+    css_classes=['scrollable-container']
 )
 
 # Arrange CheckboxGroups in a column
@@ -911,9 +913,7 @@ for frust in frust_types_corr:
     
     # Add regression lines with hover
     if len(subset) >= 2:
-        # Assuming you want to regress Spearman_Rho against another variable, but currently it's Spearman_Rho vs itself
-        # This is likely a mistake. For demonstration, let's assume you want to regress Spearman_Rho against Protein index
-        # First, convert Protein to numerical indices
+        # Convert Protein to numerical indices for regression
         subset_sorted = subset.sort_values('Protein')
         x_vals = np.arange(len(subset_sorted))
         y_vals = subset_sorted['Spearman_Rho'].values
@@ -1042,6 +1042,13 @@ custom_styles = Div(text="""
         .bk-root {
             width: 100% !important;
         }
+        .scrollable-container {
+            height: 150px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 5px;
+            border-radius: 4px;
+        }
     </style>
 """)
 
@@ -1108,11 +1115,12 @@ main_layout = column(
     custom_styles,
     header,
     visualization_section,
+    controls_section,
     controls_section_layout,  # Updated to include CheckboxGroups
     data_table,
     sizing_mode='stretch_width'
 )
 
-# Set up document
+# (End) Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
