@@ -863,31 +863,31 @@ for frust in frust_types_corr:
         muted_alpha=0.1
     )
     
-    # Add regression lines with hover
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
-        # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
-        # This needs clarification based on data structure.
-        x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
-        y_range = slope * x_range + intercept
-        p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
+    # # Add regression lines with hover
+    # if len(subset) >= 2:
+    #     slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
+    #     # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
+    #     # This needs clarification based on data structure.
+    #     x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
+    #     y_range = slope * x_range + intercept
+    #     p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
         
-        # Add regression equation hover
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-        invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
+    #     # Add regression equation hover
+    #     regression_source = ColumnDataSource(data=dict(
+    #         x=x_range,
+    #         y=y_range,
+    #         equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+    #     ))
+    #     invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
         
-        hover_regression = HoverTool(
-            renderers=[invisible_regression],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_corr.add_tools(hover_regression)
+    #     hover_regression = HoverTool(
+    #         renderers=[invisible_regression],
+    #         tooltips=[
+    #             ("Regression Equation", "@equation")
+    #         ],
+    #         mode='mouse'
+    #     )
+    #     p_corr.add_tools(hover_regression)
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
