@@ -6,13 +6,12 @@ from scipy.stats import spearmanr, linregress
 
 from bokeh.io import curdoc
 from bokeh.models import (
-    ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
+    ColumnDataSource, Select, CheckboxGroup,  # Replaced MultiSelect with CheckboxGroup
     DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
-
 
 ###############################################################################
 # 1) Configuration
@@ -187,7 +186,7 @@ data_proviz = pd.DataFrame({
     'Spearman_EvolFrust': spearman_evol
 })
 
-# Melt data for plotting
+# Melt data for plotting Spearman Rho vs Average B-Factor
 data_long_avg = data_proviz.melt(
     id_vars=['Protein', 'Avg_B_Factor'],
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
@@ -195,6 +194,7 @@ data_long_avg = data_proviz.melt(
     value_name='Spearman_Rho'
 )
 
+# Melt data for plotting Spearman Rho vs Std Dev of B-Factor
 data_long_std = data_proviz.melt(
     id_vars=['Protein', 'Std_B_Factor'],
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
@@ -331,9 +331,10 @@ source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
 source_scatter_af = ColumnDataSource(data=dict(x=[], y=[]))
 source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[]))
 
-# Create Div elements for regression info
+# Create Div elements for regression info with empty text and hidden by default
 regression_info_exp = Div(
     text="", 
+    visible=False,  # Initially hidden
     styles={
         'background-color': '#f8f9fa',
         'padding': '10px',
@@ -348,6 +349,7 @@ regression_info_exp = Div(
 )
 regression_info_af = Div(
     text="",
+    visible=False,  # Initially hidden
     styles={
         'background-color': '#f8f9fa',
         'padding': '10px',
@@ -362,6 +364,7 @@ regression_info_af = Div(
 )
 regression_info_evol = Div(
     text="",
+    visible=False,  # Initially hidden
     styles={
         'background-color': '#f8f9fa',
         'padding': '10px',
@@ -384,12 +387,14 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     if len(xvals) < 2 or np.all(xvals == xvals[0]):
         if info_div:
             info_div.text = "Insufficient data for regression"
+            info_div.visible = True
         return
     
     not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
     if not any(not_nan):
         if info_div:
             info_div.text = "No valid data points"
+            info_div.visible = True
         return
     
     xvals_clean = xvals[not_nan]
@@ -397,6 +402,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     if len(xvals_clean) < 2:
         if info_div:
             info_div.text = "Insufficient data for regression"
+            info_div.visible = True
         return
     
     # Linear regression
@@ -427,7 +433,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     )
     fig.add_tools(hover_regression)
     
-    # Update regression info div with equation
+    # Update regression info div with equation and make it visible
     if info_div:
         info_div.text = f"""
         <div style='color: {color}'>
@@ -435,6 +441,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
             <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
         </div>
         """
+        info_div.visible = True
 
 # Dropdown select
 file_options = sorted(data_by_file.keys())
@@ -481,9 +488,14 @@ def update_plot(attr, old, new):
         p_scatter_exp.title.text = ""
         p_scatter_af.title.text = ""
         p_scatter_evol.title.text = ""
+        
+        # Hide regression info Divs
         regression_info_exp.text = ""
+        regression_info_exp.visible = False
         regression_info_af.text = ""
+        regression_info_af.visible = False
         regression_info_evol.text = ""
+        regression_info_evol.visible = False
         return
     
     # Get window size from slider
@@ -539,9 +551,13 @@ def update_plot(attr, old, new):
     source_scatter_af.data = dict(x=[], y=[])
     source_scatter_evol.data = dict(x=[], y=[])
     
+    # Hide regression info Divs initially
     regression_info_exp.text = ""
+    regression_info_exp.visible = False
     regression_info_af.text = ""
+    regression_info_af.visible = False
     regression_info_evol.text = ""
+    regression_info_evol.visible = False
     
     if sub_orig.empty:
         p_scatter_exp.title.text = f"{filename} (No Data)"
@@ -600,7 +616,9 @@ else:
     ]
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# (E) FILTERS for correlation table
+# (E) FILTERS for correlation table using CheckboxGroup
+
+# Prepare options
 tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
 if not df_all_corr.empty:
     combo_options = sorted({
@@ -610,28 +628,30 @@ if not df_all_corr.empty:
 else:
     combo_options = []
 
-# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
-multi_tests = MultiSelect(
-    title="Select Tests:",
-    value=[],
-    options=tests_in_corr,
-    size=10,
-    width=300
-)
-multi_combos = MultiSelect(
-    title="Select Metric Pairs:",
-    value=[],
-    options=combo_options,
-    size=10,
+# Define CheckboxGroup for Tests
+checkbox_tests = CheckboxGroup(
+    labels=tests_in_corr,
+    active=[],  # List of indices of active checkboxes
     width=300
 )
 
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
+# Define CheckboxGroup for Metric Pairs
+checkbox_combos = CheckboxGroup(
+    labels=combo_options,
+    active=[],  # List of indices of active checkboxes
+    width=300
+)
+
+# Function to map active indices to selected labels
+def get_selected_labels(checkbox_group):
+    return [checkbox_group.labels[i] for i in checkbox_group.active]
+
+def update_corr_filter_checkbox(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs using CheckboxGroup."""
     if df_all_corr.empty:
         return
-    selected_tests = multi_tests.value
-    selected_combos = multi_combos.value
+    selected_tests = get_selected_labels(checkbox_tests)
+    selected_combos = get_selected_labels(checkbox_combos)
     
     if not selected_tests and not selected_combos:
         filtered = df_all_corr
@@ -653,8 +673,34 @@ def update_corr_filter(attr, old, new):
     
     source_corr.data = filtered.to_dict(orient="list")
 
-multi_tests.on_change("value", update_corr_filter)
-multi_combos.on_change("value", update_corr_filter)
+# Attach callbacks
+checkbox_tests.on_change("active", update_corr_filter_checkbox)
+checkbox_combos.on_change("active", update_corr_filter_checkbox)
+
+# Add header for filters
+filters_header = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
+
+# Create a scrollable Div for "Select Tests"
+tests_scroll = Div(
+    children=[checkbox_tests],
+    styles={'height': '150px', 'overflow-y': 'auto', 'border': '1px solid #ddd', 'padding': '5px', 'border-radius': '4px'}
+)
+
+# Create a scrollable Div for "Select Metric Pairs"
+combos_scroll = Div(
+    children=[checkbox_combos],
+    styles={'height': '150px', 'overflow-y': 'auto', 'border': '1px solid #ddd', 'padding': '5px', 'border-radius': '4px'}
+)
+
+# Arrange CheckboxGroups in a column
+controls_section_layout = column(
+    filters_header,
+    Div(text="<b>Select Tests:</b>", styles={'margin-top': '10px'}),
+    tests_scroll,
+    Div(text="<b>Select Metric Pairs:</b>", styles={'margin-top': '20px'}),
+    combos_scroll,
+    sizing_mode='stretch_width'
+)
 
 
 ###############################################################################
@@ -667,7 +713,7 @@ source_avg = ColumnDataSource(data_long_avg)
 p_avg = figure(
     title="Spearman Correlation vs Average B-Factor",
     x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -739,7 +785,7 @@ source_std = ColumnDataSource(data_long_std)
 p_std = figure(
     title="Spearman Correlation vs Std Dev of B-Factor",
     x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     sizing_mode='stretch_width',
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
@@ -820,7 +866,7 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 p_corr = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
     x_axis_label="Protein",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",  # Updated y-axis label
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=data_proviz['Protein'].tolist(),
     sizing_mode='stretch_width',
     height=600,
@@ -865,10 +911,14 @@ for frust in frust_types_corr:
     
     # Add regression lines with hover
     if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
-        # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
-        # This needs clarification based on data structure.
-        x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
+        # Assuming you want to regress Spearman_Rho against another variable, but currently it's Spearman_Rho vs itself
+        # This is likely a mistake. For demonstration, let's assume you want to regress Spearman_Rho against Protein index
+        # First, convert Protein to numerical indices
+        subset_sorted = subset.sort_values('Protein')
+        x_vals = np.arange(len(subset_sorted))
+        y_vals = subset_sorted['Spearman_Rho'].values
+        slope, intercept, r_value, p_value, std_err = linregress(x_vals, y_vals)
+        x_range = np.linspace(x_vals.min(), x_vals.max(), 100)
         y_range = slope * x_range + intercept
         p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
         
@@ -976,12 +1026,7 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Arrange MultiSelect widgets in a column
-controls_section_layout = column(
-    multi_tests,
-    multi_combos,
-    sizing_mode='stretch_width'
-)
+# Arrange CheckboxGroups in a column (already handled in controls_section_layout)
 
 # Custom styles
 custom_styles = Div(text="""
@@ -1063,8 +1108,7 @@ main_layout = column(
     custom_styles,
     header,
     visualization_section,
-    controls_section,
-    controls_section_layout,
+    controls_section_layout,  # Updated to include CheckboxGroups
     data_table,
     sizing_mode='stretch_width'
 )
