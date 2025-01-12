@@ -1,7 +1,7 @@
 import os
-import re
-import numpy as np
 import pandas as pd
+import numpy as np
+import re
 
 from bokeh.io import curdoc
 from bokeh.models import (
@@ -19,11 +19,13 @@ from scipy.stats import spearmanr
 # Local data directory path
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
-# We'll look for files matching the pattern: summary_testNNN.txt
-FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
+# No filename constraints: process any *.txt file with the required columns
+FILE_PATTERN = r"^summary_.+\.txt$"  # Optional: can be removed if you want all *.txt files
 
-# (Optional) Specify a default test to visualize on startup
-DEFAULT_TEST = "test001"  # Change this to your preferred default test
+# (Optional) Specify a default file to visualize on startup
+# This should match the exact filename (e.g., "summary_1E6X.txt")
+# Or set to "" to automatically select the first available file
+DEFAULT_FILE = "summary_test001.txt"  # Change this to your preferred default (or "")
 
 ###############################################################################
 # 2) Helpers: Data Parsing
@@ -50,27 +52,41 @@ def moving_average(arr, window_size=5):
 
 def parse_summary_file(local_path):
     """
-    Reads a summary_test###.txt with columns:
+    Reads a summary_XXXX.txt with columns:
       AlnIndex, Residue, B_Factor, ExpFrust, AFFrust, EvolFrust
     Returns (df_original, df_for_plot), plus a correlation dict for non-smoothed data.
+    Returns (None, None, {}) if parsing fails or required columns are missing.
     """
+    required_cols = ["AlnIndex", "Residue", "B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
+    
     if not os.path.isfile(local_path):
+        print(f"File not found: {local_path}")
         return None, None, {}
-
-    df = pd.read_csv(local_path, sep='\t')
+    
+    try:
+        df = pd.read_csv(local_path, sep='\t')
+    except Exception as e:
+        print(f"Skipping {local_path}: failed to parse tab-separated data. Error: {e}")
+        return None, None, {}
+    
+    # Check if all required columns exist
+    if not set(required_cols).issubset(df.columns):
+        print(f"Skipping {local_path}: missing one or more required columns {required_cols}")
+        return None, None, {}
+    
     # Convert any 'n/a' to np.nan in numeric columns
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        df[col] = df[col].apply(lambda x: np.nan if str(x).lower()=='n/a' else float(x))
-
+        df[col] = df[col].apply(lambda x: np.nan if str(x).lower() == 'n/a' else float(x))
+    
     # Non-smoothed for correlation & scatter plots
     df_original = df.copy()
-
+    
     # Smoothed for plotting
     df_for_plot = df.copy()
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_for_plot[col].values
         df_for_plot[col] = moving_average(arr, window_size=5)
-
+    
     # Skip min–max normalization if column is all-NaNs
     # or if min == max (avoid divide-by-zero).
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
@@ -82,7 +98,7 @@ def parse_summary_file(local_path):
         col_max = np.nanmax(arr)
         if col_max > col_min:
             df_for_plot[col] = (arr - col_min) / (col_max - col_min)
-
+    
     # Compute Spearman correlations on NON-smoothed data
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
@@ -107,33 +123,31 @@ def parse_summary_file(local_path):
 ###############################################################################
 # 3) Load data from local directory
 ###############################################################################
-data_by_test = {}
+data_by_file = {}
 all_corr_rows = []
 
 # List all files in the data directory
 for filename in os.listdir(DATA_DIR):
-    match = re.match(FILE_PATTERN, filename)
-    if not match:
+    # Optionally, enforce the FILE_PATTERN
+    if not re.match(FILE_PATTERN, filename):
+        print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
         continue  # skip unrelated files
-
-    test_number = match.group(1)  # e.g. "001"
-    test_name = "test" + test_number  # e.g. "test001"
-
+    
     file_path = os.path.join(DATA_DIR, filename)
     df_orig, df_plot, corrs = parse_summary_file(file_path)
     if df_orig is None:
-        continue
-
-    data_by_test[test_name] = {
+        continue  # Parsing failed or columns missing
+    
+    data_by_file[filename] = {
         "df_original": df_orig,
         "df_plot": df_plot,
         "corrs": corrs
     }
-
+    
     # Accumulate correlation info for a master table
     for combo, (rho, pval) in corrs.items():
         mA, mB = combo
-        all_corr_rows.append([test_name, mA, mB, rho, pval])
+        all_corr_rows.append([filename, mA, mB, rho, pval])
 
 # Build DataFrame of correlations
 df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
@@ -348,18 +362,18 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         """
 
 # Dropdown select
-test_options = sorted(data_by_test.keys())
-if DEFAULT_TEST in test_options:
-    initial_test = DEFAULT_TEST
-elif test_options:
-    initial_test = test_options[0]
+file_options = sorted(data_by_file.keys())
+if DEFAULT_FILE and DEFAULT_FILE in file_options:
+    initial_file = DEFAULT_FILE
+elif file_options:
+    initial_file = file_options[0]
 else:
-    initial_test = ""
+    initial_file = ""
 
-select_test = Select(
-    title="Select Protein (test###):",
-    value=initial_test,
-    options=test_options
+select_file = Select(
+    title="Select Protein (summary_XXXX.txt):",
+    value=initial_file,
+    options=file_options
 )
 
 # Add slider for moving average window size
@@ -374,16 +388,16 @@ window_slider = Slider(
 
 def update_moving_average(attr, old, new):
     """Update plot when slider value changes"""
-    update_plot(None, None, select_test.value)
+    update_plot(None, None, select_file.value)
 
 window_slider.on_change('value', update_moving_average)
 
 def update_plot(attr, old, new):
     """
-    Updates both the main plot and scatter plots when a new test is selected.
+    Updates both the main plot and scatter plots when a new file is selected.
     """
-    td = select_test.value
-    if td not in data_by_test:
+    filename = select_file.value
+    if filename not in data_by_file:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         source_scatter_exp.data = dict(x=[], y=[])
         source_scatter_af.data = dict(x=[], y=[])
@@ -401,7 +415,7 @@ def update_plot(attr, old, new):
     window_size = window_slider.value
     
     # Update main line plot with new window size
-    df_orig = data_by_test[td]["df_original"]
+    df_orig = data_by_file[filename]["df_original"]
     df_plot = df_orig.copy()
     
     # Apply moving average with current window size
@@ -423,7 +437,7 @@ def update_plot(attr, old, new):
     sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        p.title.text = f"{td} (No valid rows)."
+        p.title.text = f"{filename} (No valid rows)."
     else:
         new_data = dict(
             x=sub_plot["AlnIndex"].tolist(),
@@ -434,10 +448,10 @@ def update_plot(attr, old, new):
             evol_frust=sub_plot["EvolFrust"].tolist()
         )
         source_plot.data = new_data
-        p.title.text = f"{td} (Smoothed + Normalized)"
+        p.title.text = f"{filename} (Smoothed + Normalized)"
     
-    # Update scatter plots
-    df_orig = data_by_test[td]["df_original"]
+    # Update scatter plots (using NON-smoothed data)
+    df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
     # For each scatter figure, remove old regression lines
@@ -451,9 +465,9 @@ def update_plot(attr, old, new):
         source_scatter_exp.data = dict(x=[], y=[])
         source_scatter_af.data = dict(x=[], y=[])
         source_scatter_evol.data = dict(x=[], y=[])
-        p_scatter_exp.title.text = f"{td} (No Data)"
-        p_scatter_af.title.text = f"{td} (No Data)"
-        p_scatter_evol.title.text = f"{td} (No Data)"
+        p_scatter_exp.title.text = f"{filename} (No Data)"
+        p_scatter_af.title.text = f"{filename} (No Data)"
+        p_scatter_evol.title.text = f"{filename} (No Data)"
         regression_info_exp.text = ""
         regression_info_af.text = ""
         regression_info_evol.text = ""
@@ -462,25 +476,26 @@ def update_plot(attr, old, new):
         x_exp = sub_orig["B_Factor"].values
         y_exp = sub_orig["ExpFrust"].values
         source_scatter_exp.data = dict(x=x_exp, y=y_exp)
-        p_scatter_exp.title.text = f"{td} Experimental Frustration"
+        p_scatter_exp.title.text = f"{filename} Experimental Frustration"
         add_regression_line_and_info(p_scatter_exp, x_exp, y_exp, color="#2ca02c", info_div=regression_info_exp)
         
         # AFFrust
         x_af = sub_orig["B_Factor"].values
         y_af = sub_orig["AFFrust"].values
         source_scatter_af.data = dict(x=x_af, y=y_af)
-        p_scatter_af.title.text = f"{td} AF Frustration"
+        p_scatter_af.title.text = f"{filename} AF Frustration"
         add_regression_line_and_info(p_scatter_af, x_af, y_af, color="#ff7f0e", info_div=regression_info_af)
         
         # EvolFrust
         x_evol = sub_orig["B_Factor"].values
         y_evol = sub_orig["EvolFrust"].values
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
-        p_scatter_evol.title.text = f"{td} Evolutionary Frustration"
+        p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
         add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color="#d62728", info_div=regression_info_evol)
 
-select_test.on_change("value", update_plot)
-update_plot(None, None, initial_test)
+select_file.on_change("value", update_plot)
+if initial_file:
+    update_plot(None, None, initial_file)
 
 # (D) CORRELATION TABLE
 if df_all_corr.empty:
@@ -547,7 +562,7 @@ def update_corr_filter(attr, old, new):
             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
         else:
             filtered = df_all_corr
-
+    
     source_corr.data = filtered.to_dict(orient="list")
 
 cbg_tests.on_change("active", update_corr_filter)
@@ -695,7 +710,7 @@ custom_styles = Div(text="""
 
 # Main layout with slider
 visualization_section = column(
-    select_test,
+    select_file,
     window_slider,
     p,
     scatter_row,
@@ -716,3 +731,82 @@ main_layout = column(
 # Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
+
+###############################################################################
+# 5) CORRELATION TABLE AND FILTERS
+###############################################################################
+
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+# (E) FILTERS for correlation table
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+cbg_tests = CheckboxButtonGroup(
+    labels=tests_in_corr,
+    active=[]
+)
+cbg_combos = CheckboxButtonGroup(
+    labels=combo_options,
+    active=[]
+)
+
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
+    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
+    
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
+    
+    source_corr.data = filtered.to_dict(orient="list")
+
+cbg_tests.on_change("active", update_corr_filter)
+cbg_combos.on_change("active", update_corr_filter)
+
+###############################################################################
+# End of Script
+###############################################################################
