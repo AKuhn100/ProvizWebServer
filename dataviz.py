@@ -995,6 +995,27 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
+# Define test and combo options (replace these with your actual options)
+test_options = ["test1", "test2", "test3"]  # Replace with your actual test options
+combo_options = ["combo1", "combo2", "combo3"]  # Replace with your actual combo options
+
+# Define MultiSelect widgets
+multi_tests = MultiSelect(
+    title="Select Tests",
+    value=["all"],
+    options=["all"] + list(test_options),
+    height=150,
+    sizing_mode='stretch_width'
+)
+
+multi_combos = MultiSelect(
+    title="Select Combinations",
+    value=["all"],
+    options=["all"] + list(combo_options),
+    height=150,
+    sizing_mode='stretch_width'
+)
+
 # Arrange MultiSelect widgets in a column
 controls_section_layout = column(
     multi_tests,
