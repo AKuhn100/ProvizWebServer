@@ -19,16 +19,26 @@ from scipy.stats import spearmanr
 # Local data directory path
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
-# No filename constraints: process any *.txt file with the required columns
-FILE_PATTERN = r"^summary_.+\.txt$"  # Optional: can be removed if you want all *.txt files
+# We'll process any *.txt file with the required columns
+FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove if needed
 
 # (Optional) Specify a default file to visualize on startup
 # This should match the exact filename (e.g., "summary_1E6X.txt")
 # Or set to "" to automatically select the first available file
 DEFAULT_FILE = "summary_test001.txt"  # Change this to your preferred default (or "")
 
+# Define shared color mapping for consistent coloring across all plots
+FRUSTRATION_COLORS = {
+    "ExpFrust": "#1f77b4",   # Blue
+    "AFFrust": "#ff7f0e",    # Orange
+    "EvolFrust": "#2ca02c"   # Green
+}
+
+# Define possible frustration columns
+POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
+
 ###############################################################################
-# 2) Helpers: Data Parsing
+# 2) Helpers: Data Parsing and Processing
 ###############################################################################
 def moving_average(arr, window_size=5):
     """
@@ -103,22 +113,53 @@ def parse_summary_file(local_path):
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if not sub.empty:
-        combos = [
-            ("B_Factor", "ExpFrust"),
-            ("B_Factor", "AFFrust"),
-            ("B_Factor", "EvolFrust"),
-            ("ExpFrust", "AFFrust"),
-            ("ExpFrust", "EvolFrust"),
-            ("AFFrust",  "EvolFrust"),
-        ]
-        for (mA, mB) in combos:
-            # Handle constant input warnings by checking variance
-            if sub[mA].nunique() < 2 or sub[mB].nunique() < 2:
+        for col in POSSIBLE_FRUST_COLUMNS:
+            if sub[col].nunique() < 2 or sub['B_Factor'].nunique() < 2:
                 rho, pval = np.nan, np.nan
             else:
-                rho, pval = spearmanr(sub[mA], sub[mB])
-            corrs[(mA, mB)] = (rho, pval)
+                rho, pval = spearmanr(sub['B_Factor'], sub[col])
+            corrs[col] = (rho, pval)
     return df_original, df_for_plot, corrs
+
+def compute_proviz_data(data_by_file):
+    """
+    Computes average and std dev B-Factor and Spearman correlations for each file.
+    Returns a DataFrame with:
+        - Protein
+        - Avg_B_Factor
+        - Std_B_Factor
+        - Spearman_ExpFrust
+        - Spearman_AFFrust
+        - Spearman_EvolFrust
+    """
+    records = []
+    for filename, data in data_by_file.items():
+        df_orig = data["df_original"]
+        corrs = data["corrs"]
+        
+        avg_b = df_orig["B_Factor"].mean()
+        std_b = df_orig["B_Factor"].std()
+        
+        record = {
+            "Protein": filename,
+            "Avg_B_Factor": avg_b,
+            "Std_B_Factor": std_b
+        }
+        
+        for frust in POSSIBLE_FRUST_COLUMNS:
+            rho, pval = corrs.get(frust, (np.nan, np.nan))
+            record[f"Spearman_{frust}"] = rho
+        
+        records.append(record)
+    
+    data_proviz = pd.DataFrame(records)
+    data_proviz.dropna(subset=['Avg_B_Factor', 'Std_B_Factor'], inplace=True)
+    
+    # Ensure numeric types
+    for col in ['Avg_B_Factor', 'Std_B_Factor'] + [f'Spearman_{col}' for col in POSSIBLE_FRUST_COLUMNS]:
+        data_proviz[col] = pd.to_numeric(data_proviz[col], errors='coerce')
+    
+    return data_proviz
 
 ###############################################################################
 # 3) Load data from local directory
@@ -128,7 +169,7 @@ all_corr_rows = []
 
 # List all files in the data directory
 for filename in os.listdir(DATA_DIR):
-    # Optionally, enforce the FILE_PATTERN
+    # Enforce the FILE_PATTERN
     if not re.match(FILE_PATTERN, filename):
         print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
         continue  # skip unrelated files
@@ -145,16 +186,21 @@ for filename in os.listdir(DATA_DIR):
     }
     
     # Accumulate correlation info for a master table
-    for combo, (rho, pval) in corrs.items():
-        mA, mB = combo
-        all_corr_rows.append([filename, mA, mB, rho, pval])
+    for frust, (rho, pval) in corrs.items():
+        all_corr_rows.append([filename, frust, rho, pval])
 
 # Build DataFrame of correlations
-df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
+df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","Metric","Rho","Pval"])
 
 ###############################################################################
-# 4) Bokeh Application
+# 4) Compute Proviz Data
 ###############################################################################
+data_proviz = compute_proviz_data(data_by_file)
+
+###############################################################################
+# 5) Bokeh Application: Plotting and Layout
+###############################################################################
+# --- Main Plot ---
 source_plot = ColumnDataSource(data=dict(
     x=[],
     residue=[],
@@ -395,6 +441,7 @@ window_slider.on_change('value', update_moving_average)
 def update_plot(attr, old, new):
     """
     Updates both the main plot and scatter plots when a new file is selected.
+    Also updates the additional plots based on the selected file.
     """
     filename = select_file.value
     if filename not in data_by_file:
@@ -497,23 +544,125 @@ select_file.on_change("value", update_plot)
 if initial_file:
     update_plot(None, None, initial_file)
 
-# (D) CORRELATION TABLE
+# --- Additional Plots Below Unity iframe and Above Spearman Table ---
+# Prepare Proviz Data
+proviz_source = ColumnDataSource(data_proviz)
+
+# Spearman Rho vs Average B-Factor
+plot_avg_bfactor = figure(
+    title="Spearman Rho vs. Average B-Factor",
+    x_axis_label="Average B-Factor",
+    y_axis_label="Spearman Rho",
+    sizing_mode='stretch_width',
+    height=400,
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+for frust in POSSIBLE_FRUST_COLUMNS:
+    subset = proviz_source.to_df()[["Avg_B_Factor", f"Spearman_{frust}"]].dropna()
+    plot_avg_bfactor.circle(
+        x='Avg_B_Factor', y=f"Spearman_{frust}",
+        source=ColumnDataSource(subset),
+        color=FRUSTRATION_COLORS.get(frust, "#000000"),
+        size=8,
+        legend_label=frust
+    )
+    
+plot_avg_bfactor.legend.title = "Frustration Metrics"
+plot_avg_bfactor.legend.location = "top_left"
+plot_avg_bfactor.legend.click_policy = "hide"
+
+# Spearman Rho vs Std Dev B-Factor
+plot_std_bfactor = figure(
+    title="Spearman Rho vs. Std Dev of B-Factor",
+    x_axis_label="Standard Deviation of B-Factor",
+    y_axis_label="Spearman Rho",
+    sizing_mode='stretch_width',
+    height=400,
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+for frust in POSSIBLE_FRUST_COLUMNS:
+    subset = proviz_source.to_df()[["Std_B_Factor", f"Spearman_{frust}"]].dropna()
+    plot_std_bfactor.circle(
+        x='Std_B_Factor', y=f"Spearman_{frust}",
+        source=ColumnDataSource(subset),
+        color=FRUSTRATION_COLORS.get(frust, "#000000"),
+        size=8,
+        legend_label=frust
+    )
+    
+plot_std_bfactor.legend.title = "Frustration Metrics"
+plot_std_bfactor.legend.location = "top_left"
+plot_std_bfactor.legend.click_policy = "hide"
+
+# Spearman Rho per Metric per Protein (Heatmap Style)
+# For simplicity, we'll create separate bars for each metric
+from bokeh.transform import dodge
+from bokeh.palettes import Category10
+
+heatmap_source = ColumnDataSource(df_all_corr)
+
+heatmap = figure(
+    title="Spearman Rho per Frustration Metric per Protein",
+    x_range=sorted(data_proviz["Protein"].unique()),
+    y_range=["ExpFrust", "AFFrust", "EvolFrust"],
+    x_axis_label="Protein",
+    y_axis_label="Frustration Metric",
+    sizing_mode='stretch_width',
+    height=600,
+    tools=["pan", "box_zoom", "wheel_zoom", "reset", "save"],
+    toolbar_location="above"
+)
+
+# Assign colors based on Metric
+colors = [FRUSTRATION_COLORS.get(metric, "#000000") for metric in heatmap_source.data["Metric"]]
+
+heatmap.circle(
+    x='Test', y='Metric', size=20, source=heatmap_source,
+    color=colors, alpha=0.7,
+    legend_field='Metric',
+    hover_fill_color='color',
+    hover_alpha=1.0
+)
+
+heatmap.legend.title = "Frustration Metrics"
+heatmap.legend.location = "top_left"
+heatmap.legend.click_policy = "hide"
+
+# Add HoverTool for Heatmap
+heat_hover = HoverTool(
+    tooltips=[
+        ("Protein", "@Test"),
+        ("Metric", "@Metric"),
+        ("Spearman Rho", "@Rho{0.3f}"),
+        ("p-value", "@Pval{0.2e}")
+    ],
+    renderers=[]
+)
+heatmap.add_tools(heat_hover)
+
+###############################################################################
+# 6) CORRELATION TABLE AND FILTERS
+###############################################################################
 if df_all_corr.empty:
     columns = [
         TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Metric", title="Metric"),
+        TableColumn(field="Rho", title="Spearman Rho"),
         TableColumn(field="Pval", title="p-value")
     ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    source_corr = ColumnDataSource(dict(Test=[], Metric=[], Rho=[], Pval=[]))
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 else:
     source_corr = ColumnDataSource(df_all_corr)
     columns = [
         TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Metric", title="Metric"),
         TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
     ]
@@ -523,7 +672,7 @@ else:
 tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
 if not df_all_corr.empty:
     combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
+        f"{row['Metric']} vs B-Factor" 
         for _, row in df_all_corr.iterrows()
     })
 else:
@@ -549,7 +698,7 @@ def update_corr_filter(attr, old, new):
         filtered = df_all_corr
     else:
         df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['Metric']} vs B-Factor", axis=1)
         
         if selected_tests and selected_combos:
             filtered = df_tmp[
@@ -568,42 +717,9 @@ def update_corr_filter(attr, old, new):
 cbg_tests.on_change("active", update_corr_filter)
 cbg_combos.on_change("active", update_corr_filter)
 
-# Create columns for each scatter plot and its regression info with minimum width
-scatter_col_exp = column(
-    p_scatter_exp, 
-    regression_info_exp, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_af = column(
-    p_scatter_af, 
-    regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_evol = column(
-    p_scatter_evol, 
-    regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-
-# Update scatter plots row with flex layout and minimum widths
-scatter_row = row(
-    scatter_col_exp,
-    scatter_col_af,
-    scatter_col_evol,
-    sizing_mode="stretch_width",
-    styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
-        'gap': '20px',
-        'width': '100%',
-        'margin': '0 auto',
-        'flex-wrap': 'wrap'
-    }
-)
-
+###############################################################################
+# 7) Layout Integration
+###############################################################################
 # Add header and description
 header = Div(text="""
     <h1>Evolutionary Frustration</h1>
@@ -675,6 +791,15 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
+# --- Additional Plots ---
+additional_plots = column(
+    plot_avg_bfactor,
+    plot_std_bfactor,
+    heatmap,
+    sizing_mode='stretch_width',
+    spacing=20
+)
+
 # Controls section
 controls_section = column(
     Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
@@ -708,13 +833,14 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# Main layout with slider
+# Main layout with slider and additional plots
 visualization_section = column(
     select_file,
     window_slider,
     p,
     scatter_row,
     unity_container,
+    additional_plots,  # Integrated additional plots here
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
@@ -728,55 +854,7 @@ main_layout = column(
     sizing_mode='stretch_width'
 )
 
-# Set up document
-curdoc().add_root(main_layout)
-curdoc().title = "Evolutionary Frustration"
-
-###############################################################################
-# 5) CORRELATION TABLE AND FILTERS
-###############################################################################
-
-# (D) CORRELATION TABLE
-if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-else:
-    source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-
-# (E) FILTERS for correlation table
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
-        for _, row in df_all_corr.iterrows()
-    })
-else:
-    combo_options = []
-
-cbg_tests = CheckboxButtonGroup(
-    labels=tests_in_corr,
-    active=[]
-)
-cbg_combos = CheckboxButtonGroup(
-    labels=combo_options,
-    active=[]
-)
-
+# --- Correlation Table Data Filtering ---
 def update_corr_filter(attr, old, new):
     """Filter correlation table based on selected tests and metric pairs."""
     if df_all_corr.empty:
@@ -788,7 +866,7 @@ def update_corr_filter(attr, old, new):
         filtered = df_all_corr
     else:
         df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['Metric']} vs B-Factor", axis=1)
         
         if selected_tests and selected_combos:
             filtered = df_tmp[
@@ -804,8 +882,12 @@ def update_corr_filter(attr, old, new):
     
     source_corr.data = filtered.to_dict(orient="list")
 
-cbg_tests.on_change("active", update_corr_filter)
-cbg_combos.on_change("active", update_corr_filter)
+###############################################################################
+# 8) Add to Document and Finalize
+###############################################################################
+# Set up document
+curdoc().add_root(main_layout)
+curdoc().title = "Evolutionary Frustration"
 
 ###############################################################################
 # End of Script
