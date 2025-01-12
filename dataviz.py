@@ -710,33 +710,6 @@ for frust in frust_types:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-
-        # Create a specialized HoverTool first
-        hover_regression = HoverTool(
-            tooltips=None,  # We'll use a custom tooltip
-            callback=CustomJS(code=f"""
-                const tooltip = document.createElement('div');
-                tooltip.innerHTML = 'y = {slope:.3f}x + {intercept:.3f}';
-                tooltip.style.position = 'absolute';
-                tooltip.style.zIndex = '1000';
-                tooltip.style.backgroundColor = 'white';
-                tooltip.style.padding = '5px';
-                tooltip.style.border = '1px solid black';
-                
-                // Remove any existing tooltips
-                const existingTooltips = document.getElementsByClassName('custom-tooltip');
-                while(existingTooltips.length > 0) {{
-                    existingTooltips[0].remove();
-                }}
-                
-                tooltip.className = 'custom-tooltip';
-                document.body.appendChild(tooltip);
-                
-                const cb_data = cb_obj.tooltips;
-                tooltip.style.left = cb_data.geometry.x + 'px';
-                tooltip.style.top = cb_data.geometry.y + 'px';
-            """)
-        )
         
         # Add the regression line
         regression_line = p_avg.line(
@@ -746,7 +719,14 @@ for frust in frust_types:
             name=f'regression_line_{frust}'
         )
         
-        hover_regression.renderers = [regression_line]
+        # Only add the regression equation hover
+        hover_regression = HoverTool(
+            tooltips=[
+                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
+            ],
+            renderers=[regression_line],
+            mode='mouse'
+        )
         p_avg.add_tools(hover_regression)
 
 p_avg.legend.location = "top_left"
@@ -797,33 +777,6 @@ for frust in frust_types:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-
-        # Create a specialized HoverTool first
-        hover_regression = HoverTool(
-            tooltips=None,  # We'll use a custom tooltip
-            callback=CustomJS(code=f"""
-                const tooltip = document.createElement('div');
-                tooltip.innerHTML = 'y = {slope:.3f}x + {intercept:.3f}';
-                tooltip.style.position = 'absolute';
-                tooltip.style.zIndex = '1000';
-                tooltip.style.backgroundColor = 'white';
-                tooltip.style.padding = '5px';
-                tooltip.style.border = '1px solid black';
-                
-                // Remove any existing tooltips
-                const existingTooltips = document.getElementsByClassName('custom-tooltip');
-                while(existingTooltips.length > 0) {{
-                    existingTooltips[0].remove();
-                }}
-                
-                tooltip.className = 'custom-tooltip';
-                document.body.appendChild(tooltip);
-                
-                const cb_data = cb_obj.tooltips;
-                tooltip.style.left = cb_data.geometry.x + 'px';
-                tooltip.style.top = cb_data.geometry.y + 'px';
-            """)
-        )
         
         # Add the regression line
         regression_line = p_std.line(
@@ -833,7 +786,14 @@ for frust in frust_types:
             name=f'regression_line_{frust}'
         )
         
-        hover_regression.renderers = [regression_line]
+        # Only add the regression equation hover
+        hover_regression = HoverTool(
+            tooltips=[
+                ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
+            ],
+            renderers=[regression_line],
+            mode='mouse'
+        )
         p_std.add_tools(hover_regression)
 
 p_std.legend.location = "top_left"
