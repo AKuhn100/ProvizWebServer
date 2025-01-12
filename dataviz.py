@@ -6,11 +6,11 @@ from scipy.stats import spearmanr, linregress
 
 from bokeh.io import curdoc
 from bokeh.models import (
-    ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
+    ColumnDataSource, Select, CheckboxButtonGroup,  # Re-added CheckboxButtonGroup
     DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
 )
 from bokeh.plotting import figure
-from bokeh.layouts import column, row, layout
+from bokeh.layouts import column, row, layout, Spacer
 from bokeh.palettes import Category10
 
 
@@ -405,7 +405,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     # Plot regression line visibly
     x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
     y_range = slope * x_range + intercept
-    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
+    regression_renderer = fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, legend_label="Regression Line")
     
     # Create a separate data source for regression line hover
     regression_source = ColumnDataSource(data=dict(
@@ -415,7 +415,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     ))
     
     # Plot regression line again with this data source, invisible (for hover)
-    invisible_regression = fig.line('x', 'y', source=regression_source, line_width=10, alpha=0, name='regression_hover')  # Increased line_width for better hover area
+    invisible_regression = fig.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{color}')
     
     # Add a separate HoverTool for the regression line
     hover_regression = HoverTool(
@@ -529,10 +529,10 @@ def update_plot(attr, old, new):
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
-    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_hover'
-    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_hover']
-    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_hover']
-    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_hover']
+    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_hover_*'
+    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if not r.name.startswith('regression_hover')]
+    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if not r.name.startswith('regression_hover')]
+    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if not r.name.startswith('regression_hover')]
     
     # Reset data sources
     source_scatter_exp.data = dict(x=[], y=[])
@@ -610,28 +610,59 @@ if not df_all_corr.empty:
 else:
     combo_options = []
 
-# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
-multi_tests = MultiSelect(
-    title="Select Tests:",
-    value=[],
-    options=tests_in_corr,
-    size=10,
+# Replaced MultiSelect with CheckboxButtonGroup inside a scrollable Div
+cbg_tests = CheckboxButtonGroup(
+    labels=tests_in_corr,
+    active=[],
     width=300
 )
-multi_combos = MultiSelect(
-    title="Select Metric Pairs:",
-    value=[],
-    options=combo_options,
-    size=10,
+cbg_combos = CheckboxButtonGroup(
+    labels=combo_options,
+    active=[],
     width=300
+)
+
+# Create scrollable containers for the CheckboxButtonGroups
+cbg_tests_scroll = Div(
+    text='',
+    width=300,
+    height=200,  # Adjust height as needed
+    styles={
+        'overflow-y': 'auto',
+        'border': '1px solid #ddd',
+        'padding': '5px',
+        'border-radius': '4px'
+    }
+)
+cbg_combos_scroll = Div(
+    text='',
+    width=300,
+    height=200,  # Adjust height as needed
+    styles={
+        'overflow-y': 'auto',
+        'border': '1px solid #ddd',
+        'padding': '5px',
+        'border-radius': '4px'
+    }
+)
+
+# Arrange the CheckboxButtonGroups inside the scrollable Divs
+cbg_tests_scroll.children = [cbg_tests]
+cbg_combos_scroll.children = [cbg_combos]
+
+# Arrange CheckboxButtonGroups in a column layout
+controls_section_layout = column(
+    cbg_tests_scroll,
+    cbg_combos_scroll,
+    sizing_mode='stretch_width'
 )
 
 def update_corr_filter(attr, old, new):
     """Filter correlation table based on selected tests and metric pairs."""
     if df_all_corr.empty:
         return
-    selected_tests = multi_tests.value
-    selected_combos = multi_combos.value
+    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
+    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
     
     if not selected_tests and not selected_combos:
         filtered = df_all_corr
@@ -653,8 +684,8 @@ def update_corr_filter(attr, old, new):
     
     source_corr.data = filtered.to_dict(orient="list")
 
-multi_tests.on_change("value", update_corr_filter)
-multi_combos.on_change("value", update_corr_filter)
+cbg_tests.on_change("active", update_corr_filter)
+cbg_combos.on_change("active", update_corr_filter)
 
 
 ###############################################################################
@@ -846,7 +877,7 @@ hover_corr = HoverTool(
 )
 p_corr.add_tools(hover_corr)
 
-# Add horizontal line at y=0
+# Add horizontal line at y=0 without HoverTool
 p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
 
 # Add scatter glyphs
@@ -862,32 +893,6 @@ for frust in frust_types_corr:
         legend_label=frust,
         muted_alpha=0.1
     )
-    
-    # Add regression lines with hover
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Spearman_Rho'], subset['Spearman_Rho'])  # Adjusted to correlate Spearman_Rho with itself (may need correction)
-        # Note: Correlating Spearman_Rho with itself doesn't make sense. It should likely be with another variable.
-        # This needs clarification based on data structure.
-        x_range = np.linspace(subset['Spearman_Rho'].min(), subset['Spearman_Rho'].max(), 100)
-        y_range = slope * x_range + intercept
-        p_corr.line(x_range, y_range, color=color_map_corr[frust], line_dash='dashed')
-        
-        # Add regression equation hover
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-        invisible_regression = p_corr.line('x', 'y', source=regression_source, line_width=10, alpha=0, name=f'regression_hover_{frust}')
-        
-        hover_regression = HoverTool(
-            renderers=[invisible_regression],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_corr.add_tools(hover_regression)
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
@@ -976,12 +981,55 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Arrange MultiSelect widgets in a column
+# Replaced MultiSelect with CheckboxButtonGroup inside a scrollable Div
+cbg_tests = CheckboxButtonGroup(
+    labels=tests_in_corr,
+    active=[],
+    width=300
+)
+cbg_combos = CheckboxButtonGroup(
+    labels=combo_options,
+    active=[],
+    width=300
+)
+
+# Create scrollable containers for the CheckboxButtonGroups
+cbg_tests_scroll = Div(
+    text='',  # Empty, as widgets are placed via layout
+    width=300,
+    height=200,  # Adjust height as needed
+    styles={
+        'overflow-y': 'auto',
+        'border': '1px solid #ddd',
+        'padding': '5px',
+        'border-radius': '4px'
+    }
+)
+cbg_combos_scroll = Div(
+    text='',  # Empty, as widgets are placed via layout
+    width=300,
+    height=200,  # Adjust height as needed
+    styles={
+        'overflow-y': 'auto',
+        'border': '1px solid #ddd',
+        'padding': '5px',
+        'border-radius': '4px'
+    }
+)
+
+# Arrange the CheckboxButtonGroups inside the scrollable Divs
+cbg_tests_scroll.children = [cbg_tests]
+cbg_combos_scroll.children = [cbg_combos]
+
+# Arrange CheckboxButtonGroups in a column layout
 controls_section_layout = column(
-    multi_tests,
-    multi_combos,
+    cbg_tests_scroll,
+    cbg_combos_scroll,
     sizing_mode='stretch_width'
 )
+
+# Update the layout to include the scrollable CheckboxButtonGroups
+# (No changes needed here as it's already handled)
 
 # Custom styles
 custom_styles = Div(text="""
