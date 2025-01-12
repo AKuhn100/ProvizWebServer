@@ -7,7 +7,7 @@ from scipy.stats import spearmanr, linregress
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider, CustomJS
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
@@ -575,6 +575,89 @@ if initial_file:
 
 
 ###############################################################################
+# 5) CORRELATION TABLE AND FILTERS
+###############################################################################
+
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+# (E) FILTERS for correlation table
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
+multi_tests = MultiSelect(
+    title="Select Tests:",
+    value=[],
+    options=tests_in_corr,
+    size=10,
+    width=300
+)
+multi_combos = MultiSelect(
+    title="Select Metric Pairs:",
+    value=[],
+    options=combo_options,
+    size=10,
+    width=300
+)
+
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    selected_tests = multi_tests.value
+    selected_combos = multi_combos.value
+    
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
+    
+    source_corr.data = filtered.to_dict(orient="list")
+
+multi_tests.on_change("value", update_corr_filter)
+multi_combos.on_change("value", update_corr_filter)
+
+
+###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
 ###############################################################################
 
@@ -628,25 +711,28 @@ for frust in frust_types:
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Create a single regression line with hover area
+        # Create a single source for both the visible line and hover
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+        
+        # Add the visible regression line with hover functionality
         regression_line = p_avg.line(
-            x_range, y_range,
-            line_color=color_map_frust[frust],
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust[frust], 
             line_dash='dashed',
-            line_width=1,
-            line_alpha=0.8,
-            hover_line_color=color_map_frust[frust],
-            hover_line_alpha=1.0,
-            hover_line_width=2,
             name=f'regression_line_{frust}'
         )
-
-        # Define a simpler hover tool
+        
         hover_regression = HoverTool(
             renderers=[regression_line],
-            tooltips=f"y = {slope:.3f}x + {intercept:.3f}",
-            mode='mouse',
-            attachment="vertical"
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
         )
         p_avg.add_tools(hover_regression)
 
@@ -699,25 +785,28 @@ for frust in frust_types:
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Create a single regression line with hover area
+        # Create a single source for both the visible line and hover
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+        
+        # Add the visible regression line with hover functionality
         regression_line = p_std.line(
-            x_range, y_range,
-            line_color=color_map_frust[frust],
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust[frust], 
             line_dash='dashed',
-            line_width=1,
-            line_alpha=0.8,
-            hover_line_color=color_map_frust[frust],
-            hover_line_alpha=1.0,
-            hover_line_width=2,
             name=f'regression_line_{frust}'
         )
-
-        # Define a simpler hover tool
+        
         hover_regression = HoverTool(
             renderers=[regression_line],
-            tooltips=f"y = {slope:.3f}x + {intercept:.3f}",
-            mode='mouse',
-            attachment="vertical"
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
         )
         p_std.add_tools(hover_regression)
 
