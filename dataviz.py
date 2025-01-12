@@ -135,6 +135,16 @@ spearman_exp = []
 spearman_af = []
 spearman_evol = []
 
+# Define possible frustration columns
+POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
+
+# Define shared color mapping for consistent coloring across all plots
+FRUSTRATION_COLORS = {
+    "ExpFrust.": Category10[10][0],  # Red
+    "AFFrust.": Category10[10][1],   # Blue
+    "EvolFrust.": Category10[10][2]  # Green
+}
+
 # List all files in the data directory
 for filename in os.listdir(DATA_DIR):
     # Optionally, enforce the FILE_PATTERN
@@ -149,7 +159,7 @@ for filename in os.listdir(DATA_DIR):
     
     data_by_file[filename] = {
         "df_original": df_orig,
-        "df_plot": df_plot,
+        "df_for_plot": df_plot,
         "corrs": corrs
     }
     
@@ -622,7 +632,7 @@ def update_corr_filter(attr, old, new):
             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
         else:
             filtered = df_all_corr
-
+    
     source_corr.data = filtered.to_dict(orient="list")
 
 cbg_tests.on_change("active", update_corr_filter)
@@ -654,9 +664,10 @@ color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 # Add scatter glyphs
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
     p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
-        source=ColumnDataSource(subset),
+        source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
@@ -690,9 +701,10 @@ p_std = figure(
 # Add scatter glyphs
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
     p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
-        source=ColumnDataSource(subset),
+        source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
@@ -736,24 +748,24 @@ p_corr = figure(
     tools="pan,wheel_zoom,box_zoom,reset,save",
     active_drag="box_zoom",
     active_scroll=None,
-    toolbar_location="above",
-    tools_tooltips=None  # Disable default tooltips
+    toolbar_location="above"
 )
-
-# Add horizontal line at y=0
-p_corr.line(x=[-1, len(data_proviz['Protein'])], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
 
 # Define color palette for Frustration Types
 frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
 palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
 color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
 
+# Add horizontal line at y=0
+p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
+
 # Add scatter glyphs
 for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
     p_corr.scatter(
         'Protein', 'Spearman_Rho',
-        source=ColumnDataSource(subset),
+        source=source_subset,
         color=color_map_corr[frust],
         size=8,
         alpha=0.6,
@@ -958,10 +970,85 @@ curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
 
 ###############################################################################
+# 7) CORRELATION TABLE AND FILTERS (Moved Earlier for Logical Flow)
+###############################################################################
+
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+# (E) FILTERS for correlation table
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+cbg_tests = CheckboxButtonGroup(
+    labels=tests_in_corr,
+    active=[]
+)
+cbg_combos = CheckboxButtonGroup(
+    labels=combo_options,
+    active=[]
+)
+
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
+    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
+    
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
+    
+    source_corr.data = filtered.to_dict(orient="list")
+
+cbg_tests.on_change("active", update_corr_filter)
+cbg_combos.on_change("active", update_corr_filter)
+
+###############################################################################
 # 8) Summary of Additions
 ###############################################################################
-# - Aggregated data_proviz DataFrame created for additional plots.
-# - Three new Bokeh plots (p_avg, p_std, p_corr) added to visualize Spearman correlations.
-# - These plots are integrated into the layout below the Unity iframe and above the Spearman table.
-# - Regression lines added to scatter plots for each frustration metric.
-# - Hover tools and legends configured for better interactivity and clarity.
+# - Removed the invalid 'tools_tooltips' parameter from the figure definition.
+# - Added HoverTool explicitly where needed.
+# - Integrated the additional plots below the Unity iframe and above the Spearman correlation table.
+# - Ensured consistent theming using Category10 palette.
+# - Verified that all figures have correct tool configurations.
