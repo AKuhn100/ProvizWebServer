@@ -7,7 +7,7 @@ from scipy.stats import spearmanr, linregress
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, MultiSelect,  # Changed from CheckboxButtonGroup to MultiSelect
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, LabelSet
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, LabelSet, Slider  # Added Slider
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
