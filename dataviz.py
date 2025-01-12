@@ -7,11 +7,12 @@ from scipy.stats import spearmanr, linregress
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
+
 
 ###############################################################################
 # 1) Configuration
