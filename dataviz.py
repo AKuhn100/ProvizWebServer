@@ -7,12 +7,11 @@ from scipy.stats import spearmanr, linregress
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxButtonGroup,
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, Label, GlyphRenderer, 
-    Spacer, Panel, Tabs, Slider, Legend, LegendItem
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer
 )
 from bokeh.plotting import figure
-from bokeh.layouts import column, row
-from bokeh.palettes import Category10, Category20
+from bokeh.layouts import column, row, layout
+from bokeh.palettes import Category10
 
 ###############################################################################
 # 1) Configuration
@@ -506,7 +505,7 @@ def update_plot(attr, old, new):
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
-    # For each scatter figure, remove old regression lines by clearing renderers named 'regression_line'
+    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_line'
     p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_line']
     p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_line']
     p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_line']
@@ -796,8 +795,6 @@ for frust in frust_types_corr:
         legend_label=frust,
         muted_alpha=0.1
     )
-    
-    # Regression lines are removed as 'Protein' is categorical
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
@@ -885,10 +882,10 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Wrap CheckboxButtonGroup using Div with flexbox for wrapping
-cbg_tests_wrapped = Div(text="<i>Select Proteins:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
+# Wrap CheckboxButtonGroup using Flexbox via Div
+cbg_tests_label = Div(text="<i>Select Proteins:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
 cbg_tests_container = Div(
-    text='',
+    text='',  # Empty, as widgets are placed via layout
     sizing_mode='stretch_width',
     styles={
         'display': 'flex',
@@ -896,11 +893,10 @@ cbg_tests_container = Div(
         'gap': '10px'
     }
 )
-cbg_tests_container.children = [cbg_tests]
 
-cbg_combos_wrapped = Div(text="<i>Select Metric Pairs:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
+cbg_combos_label = Div(text="<i>Select Metric Pairs:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
 cbg_combos_container = Div(
-    text='',
+    text='',  # Empty, as widgets are placed via layout
     sizing_mode='stretch_width',
     styles={
         'display': 'flex',
@@ -908,24 +904,24 @@ cbg_combos_container = Div(
         'gap': '10px'
     }
 )
-cbg_combos_container.children = [cbg_combos]
 
+# Arrange the labels and CheckboxButtonGroups in rows
 controls_row_proteins = row(
-    cbg_tests_wrapped,
-    cbg_tests_container,
+    cbg_tests_label,
+    cbg_tests,
     sizing_mode='stretch_width',
     styles={
-        'display': 'flex', 
+        'display': 'flex',
         'flex-wrap': 'wrap',
         'align-items': 'flex-start'
     }
 )
 controls_row_combos = row(
-    cbg_combos_wrapped,
-    cbg_combos_container,
+    cbg_combos_label,
+    cbg_combos,
     sizing_mode='stretch_width',
     styles={
-        'display': 'flex', 
+        'display': 'flex',
         'flex-wrap': 'wrap',
         'align-items': 'flex-start'
     }
