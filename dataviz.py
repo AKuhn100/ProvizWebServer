@@ -12,6 +12,8 @@ from bokeh.models import (
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
+from math import pi  
+
 
 ###############################################################################
 # 1) Configuration
