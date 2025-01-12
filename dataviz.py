@@ -575,89 +575,6 @@ if initial_file:
 
 
 ###############################################################################
-# 5) CORRELATION TABLE AND FILTERS
-###############################################################################
-
-# (D) CORRELATION TABLE
-if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-else:
-    source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-
-# (E) FILTERS for correlation table
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
-        for _, row in df_all_corr.iterrows()
-    })
-else:
-    combo_options = []
-
-# Replaced CheckboxButtonGroup with MultiSelect for better layout handling
-multi_tests = MultiSelect(
-    title="Select Tests:",
-    value=[],
-    options=tests_in_corr,
-    size=10,
-    width=300
-)
-multi_combos = MultiSelect(
-    title="Select Metric Pairs:",
-    value=[],
-    options=combo_options,
-    size=10,
-    width=300
-)
-
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
-    if df_all_corr.empty:
-        return
-    selected_tests = multi_tests.value
-    selected_combos = multi_combos.value
-    
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
-        
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
-    
-    source_corr.data = filtered.to_dict(orient="list")
-
-multi_tests.on_change("value", update_corr_filter)
-multi_combos.on_change("value", update_corr_filter)
-
-
-###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
 ###############################################################################
 
@@ -680,57 +597,62 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
-# Add scatter glyphs and collect renderers for hover
-all_renderers = []
+# Create scatter glyphs and regression lines
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter_renderer = p_avg.scatter(
+    
+    # Add scatter points
+    scatter = p_avg.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1
+        muted_alpha=0.1,
+        name=f'scatter_{frust}'
     )
-    all_renderers.append(scatter_renderer)
     
-    # Add regression lines with hover
+    # Add hover for scatter points
+    hover_scatter = HoverTool(
+        renderers=[scatter],
+        tooltips=[
+            ("Protein", "@Protein"),
+            ("Frustration Type", "@Frust_Type"),
+            ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ],
+        mode='mouse'
+    )
+    p_avg.add_tools(hover_scatter)
+    
+    # Add regression line if enough points
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Add the regression line
-        regression_line = p_avg.line(
+        # Add regression line
+        reg_line = p_avg.line(
             x_range, y_range,
             line_color=color_map_frust[frust],
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
         
-        # Only add the regression equation hover
-        hover_regression = HoverTool(
+        # Add hover for regression line
+        hover_reg = HoverTool(
+            renderers=[reg_line],
             tooltips=[
                 ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
             ],
-            renderers=[regression_line],
             mode='mouse'
         )
-        p_avg.add_tools(hover_regression)
+        p_avg.add_tools(hover_reg)
 
-# Add HoverTool specifically for scatter points
-hover_avg = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=all_renderers,
-    mode='mouse'
-)
-p_avg.add_tools(hover_avg)
+p_avg.legend.location = "top_left"
+p_avg.legend.title = "Frustration Type"
+p_avg.legend.click_policy = "mute"
     
     # Add regression lines with hover
     if len(subset) >= 2:
@@ -774,57 +696,62 @@ p_std = figure(
     active_scroll=None
 )
 
-# Add scatter glyphs and collect renderers for hover
-all_renderers = []
+# Create scatter glyphs and regression lines
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    scatter_renderer = p_std.scatter(
+    
+    # Add scatter points
+    scatter = p_std.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
         legend_label=frust,
-        muted_alpha=0.1
+        muted_alpha=0.1,
+        name=f'scatter_{frust}'
     )
-    all_renderers.append(scatter_renderer)
     
-    # Add regression lines with hover
+    # Add hover for scatter points
+    hover_scatter = HoverTool(
+        renderers=[scatter],
+        tooltips=[
+            ("Protein", "@Protein"),
+            ("Frustration Type", "@Frust_Type"),
+            ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ],
+        mode='mouse'
+    )
+    p_std.add_tools(hover_scatter)
+    
+    # Add regression line if enough points
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
         
-        # Add the regression line
-        regression_line = p_std.line(
+        # Add regression line
+        reg_line = p_std.line(
             x_range, y_range,
             line_color=color_map_frust[frust],
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
         
-        # Only add the regression equation hover
-        hover_regression = HoverTool(
+        # Add hover for regression line
+        hover_reg = HoverTool(
+            renderers=[reg_line],
             tooltips=[
                 ("Regression Equation", f"y = {slope:.3f}x + {intercept:.3f}")
             ],
-            renderers=[regression_line],
             mode='mouse'
         )
-        p_std.add_tools(hover_regression)
+        p_std.add_tools(hover_reg)
 
-# Add HoverTool specifically for scatter points
-hover_std = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=all_renderers,
-    mode='mouse'
-)
-p_std.add_tools(hover_std)
+p_std.legend.location = "top_left"
+p_std.legend.title = "Frustration Type"
+p_std.legend.click_policy = "mute"
     
     # Add regression lines with hover
     if len(subset) >= 2:
