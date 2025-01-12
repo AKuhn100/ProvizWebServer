@@ -12,7 +12,7 @@ from bokeh.models import (
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row
-from bokeh.palettes import Category10
+from bokeh.palettes import Category10, Category20
 
 ###############################################################################
 # 1) Configuration
@@ -20,21 +20,19 @@ from bokeh.palettes import Category10
 # Local data directory path
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
-# No filename constraints: process any *.txt file with the required columns
-FILE_PATTERN = r"^summary_.+\.txt$"  # Optional: can be adjusted or removed
+# Filename pattern to include only relevant files
+FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove as needed
 
-# (Optional) Specify a default file to visualize on startup
-# This should match the exact filename (e.g., "summary_1E6X.txt")
-# Or set to "" to automatically select the first available file
-DEFAULT_FILE = "summary_test001.txt"  # Change this to your preferred default (or "")
+# Default file to visualize on startup
+DEFAULT_FILE = "summary_test001.txt"  # Change to your preferred default or set to ""
 
 ###############################################################################
 # 2) Helpers: Data Parsing and Aggregation
 ###############################################################################
 def moving_average(arr, window_size=5):
     """
-    Simple moving average on a float array (np.nan used for missing).
-    Returns an equally sized array of floats (with np.nan where not enough data).
+    Computes a simple moving average on a float array.
+    Returns an equally sized array with np.nan where insufficient data exists.
     """
     n = len(arr)
     out = np.full(n, np.nan)
@@ -53,10 +51,7 @@ def moving_average(arr, window_size=5):
 
 def parse_summary_file(local_path):
     """
-    Reads a summary_XXXX.txt with columns:
-      AlnIndex, Residue, B_Factor, ExpFrust, AFFrust, EvolFrust
-    Returns (df_original, df_for_plot), plus a correlation dict for non-smoothed data.
-    Returns (None, None, {}) if parsing fails or required columns are missing.
+    Parses a summary file and returns original and processed DataFrames along with correlations.
     """
     required_cols = ["AlnIndex", "Residue", "B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
     
@@ -67,40 +62,35 @@ def parse_summary_file(local_path):
     try:
         df = pd.read_csv(local_path, sep='\t')
     except Exception as e:
-        print(f"Skipping {local_path}: failed to parse tab-separated data. Error: {e}")
+        print(f"Skipping {local_path}: failed to parse data. Error: {e}")
         return None, None, {}
     
-    # Check if all required columns exist
+    # Check for required columns
     if not set(required_cols).issubset(df.columns):
-        print(f"Skipping {local_path}: missing one or more required columns {required_cols}")
+        print(f"Skipping {local_path}: missing required columns.")
         return None, None, {}
     
-    # Convert any 'n/a' to np.nan in numeric columns
+    # Replace 'n/a' with NaN and convert to float
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        df[col] = df[col].apply(lambda x: np.nan if str(x).lower() == 'n/a' else float(x))
+        df[col] = pd.to_numeric(df[col], errors='coerce')
     
-    # Non-smoothed for correlation & scatter plots
     df_original = df.copy()
-    
-    # Smoothed for plotting
     df_for_plot = df.copy()
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_for_plot[col].values
-        df_for_plot[col] = moving_average(arr, window_size=5)
     
-    # Skip min–max normalization if column is all-NaNs
-    # or if min == max (avoid divide-by-zero).
+    # Apply moving average
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_for_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue  # All values are NaN; skip
-        col_min = np.nanmin(arr)
-        col_max = np.nanmax(arr)
-        if col_max > col_min:
-            df_for_plot[col] = (arr - col_min) / (col_max - col_min)
+        df_for_plot[col] = moving_average(df_for_plot[col].values, window_size=5)
     
-    # Compute Spearman correlations on NON-smoothed data
+    # Min-Max normalization
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        valid = ~df_for_plot[col].isna()
+        if valid.any():
+            col_min = df_for_plot.loc[valid, col].min()
+            col_max = df_for_plot.loc[valid, col].max()
+            if col_max > col_min:
+                df_for_plot[col] = (df_for_plot[col] - col_min) / (col_max - col_min)
+    
+    # Compute Spearman correlations on original data
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if not sub.empty:
@@ -113,12 +103,12 @@ def parse_summary_file(local_path):
             ("AFFrust",  "EvolFrust"),
         ]
         for (mA, mB) in combos:
-            # Handle constant input warnings by checking variance
             if sub[mA].nunique() < 2 or sub[mB].nunique() < 2:
                 rho, pval = np.nan, np.nan
             else:
                 rho, pval = spearmanr(sub[mA], sub[mB])
             corrs[(mA, mB)] = (rho, pval)
+    
     return df_original, df_for_plot, corrs
 
 ###############################################################################
@@ -127,7 +117,7 @@ def parse_summary_file(local_path):
 data_by_file = {}
 all_corr_rows = []
 
-# Lists for aggregation
+# Aggregation lists
 protein_names = []
 avg_bfactors = []
 std_bfactors = []
@@ -135,27 +125,26 @@ spearman_exp = []
 spearman_af = []
 spearman_evol = []
 
-# Define possible frustration columns
+# Possible frustration columns
 POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
 
-# Define shared color mapping for consistent coloring across all plots
+# Color mapping for plots
 FRUSTRATION_COLORS = {
     "ExpFrust.": Category10[10][0],  # Red
     "AFFrust.": Category10[10][1],   # Blue
     "EvolFrust.": Category10[10][2]  # Green
 }
 
-# List all files in the data directory
+# Iterate through files
 for filename in os.listdir(DATA_DIR):
-    # Optionally, enforce the FILE_PATTERN
     if not re.match(FILE_PATTERN, filename):
         print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
-        continue  # skip unrelated files
+        continue
     
     file_path = os.path.join(DATA_DIR, filename)
     df_orig, df_plot, corrs = parse_summary_file(file_path)
     if df_orig is None:
-        continue  # Parsing failed or columns missing
+        continue
     
     data_by_file[filename] = {
         "df_original": df_orig,
@@ -163,12 +152,12 @@ for filename in os.listdir(DATA_DIR):
         "corrs": corrs
     }
     
-    # Accumulate correlation info for a master table
+    # Collect correlation data
     for combo, (rho, pval) in corrs.items():
         mA, mB = combo
         all_corr_rows.append([filename, mA, mB, rho, pval])
     
-    # Aggregation for additional plots
+    # Aggregate data for additional plots
     avg_b = df_orig['B_Factor'].mean()
     std_b = df_orig['B_Factor'].std()
     
@@ -183,10 +172,10 @@ for filename in os.listdir(DATA_DIR):
     spearman_af.append(spearman_r_af)
     spearman_evol.append(spearman_r_evol)
 
-# Build DataFrame of correlations for the table
+# Correlation DataFrame
 df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
 
-# Build Aggregated DataFrame for Additional Plots
+# Aggregated DataFrame for Additional Plots
 data_proviz = pd.DataFrame({
     'Protein': protein_names,
     'Avg_B_Factor': avg_bfactors,
@@ -223,7 +212,7 @@ data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 # 4) Bokeh Application Components
 ###############################################################################
 
-# (A) Main Plot: Smoothed + Normalized Data (Already Exists)
+# (A) Main Plot: Smoothed + Normalized Data
 source_plot = ColumnDataSource(data=dict(
     x=[],
     residue=[],
@@ -296,8 +285,7 @@ p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
-# (B) Scatter Plots (Already Exists)
-# --- Three scatter plots (NON-NORMALIZED) ---
+# (B) Scatter Plots (Experimental, AF, Evolutionary Frustration)
 # Scatter plots configuration with disabled wheel zoom by default
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
@@ -414,7 +402,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     # Plot regression line
     x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
     y_range = slope * x_range + intercept
-    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color)
+    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
     
     # Update regression info div with equation
     if info_div:
@@ -518,11 +506,10 @@ def update_plot(attr, old, new):
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     
-    # For each scatter figure, remove old regression lines by clearing renderer list
-    # (Assuming only one regression line per scatter plot)
-    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if not isinstance(r, GlyphRenderer) or r.name != 'regression_line']
-    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if not isinstance(r, GlyphRenderer) or r.name != 'regression_line']
-    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if not isinstance(r, GlyphRenderer) or r.name != 'regression_line']
+    # For each scatter figure, remove old regression lines by clearing renderers named 'regression_line'
+    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_line']
+    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_line']
+    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_line']
     
     # Reset data sources
     source_scatter_exp.data = dict(x=[], y=[])
@@ -661,6 +648,17 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
+# Add HoverTool
+hover_avg = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_avg.add_tools(hover_avg)
+
 # Add scatter glyphs
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
@@ -671,7 +669,8 @@ for frust in frust_types:
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
-        legend_label=frust
+        legend_label=frust,
+        muted_alpha=0.1
     )
     
     # Add regression lines
@@ -683,6 +682,7 @@ for frust in frust_types:
 
 p_avg.legend.location = "top_left"
 p_avg.legend.title = "Frustration Type"
+p_avg.legend.click_policy = "mute"
 
 # (G) Spearman Rho vs Std Dev of B-Factor
 source_std = ColumnDataSource(data_long_std)
@@ -698,6 +698,17 @@ p_std = figure(
     active_scroll=None
 )
 
+# Add HoverTool
+hover_std = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_std.add_tools(hover_std)
+
 # Add scatter glyphs
 for frust in frust_types:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
@@ -708,7 +719,8 @@ for frust in frust_types:
         color=color_map_frust[frust],
         size=8,
         alpha=0.6,
-        legend_label=frust
+        legend_label=frust,
+        muted_alpha=0.1
     )
     
     # Add regression lines
@@ -720,6 +732,7 @@ for frust in frust_types:
 
 p_std.legend.location = "top_left"
 p_std.legend.title = "Frustration Type"
+p_std.legend.click_policy = "mute"
 
 # (H) Spearman Rho per Protein and Frustration Metric
 # Melt data_proviz for the third plot
@@ -756,6 +769,17 @@ frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
 palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
 color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
 
+# Add HoverTool
+hover_corr = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Metric", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_corr.add_tools(hover_corr)
+
 # Add horizontal line at y=0
 p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
 
@@ -772,22 +796,16 @@ for frust in frust_types_corr:
         legend_label=frust,
         muted_alpha=0.1
     )
+    
+    # Regression lines are removed as 'Protein' is categorical
 
 p_corr.legend.location = "top_left"
 p_corr.legend.title = "Frustration Type"
 p_corr.legend.click_policy = "mute"
 
-# Add HoverTool
-hover_corr = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=p_corr.renderers,
-    mode='mouse'
-)
-p_corr.add_tools(hover_corr)
+# Rotate x-axis labels to prevent overlapping
+from math import pi
+p_corr.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
 ###############################################################################
 # 7) User Interface Components
@@ -865,18 +883,57 @@ unity_container = column(
 )
 
 # Controls section
-controls_section = column(
-    Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'}),
-    row(
-        Div(text="<i>Select Proteins:</i>", width=150),
-        cbg_tests,
-        sizing_mode='stretch_width'
-    ),
-    row(
-        Div(text="<i>Select Metric Pairs:</i>", width=150),
-        cbg_combos,
-        sizing_mode='stretch_width'
-    ),
+controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
+
+# Wrap CheckboxButtonGroup using Div with flexbox for wrapping
+cbg_tests_wrapped = Div(text="<i>Select Proteins:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
+cbg_tests_container = Div(
+    text='',
+    sizing_mode='stretch_width',
+    styles={
+        'display': 'flex',
+        'flex-wrap': 'wrap',
+        'gap': '10px'
+    }
+)
+cbg_tests_container.children = [cbg_tests]
+
+cbg_combos_wrapped = Div(text="<i>Select Metric Pairs:</i>", width=150, styles={'display': 'inline-block', 'vertical-align': 'top'})
+cbg_combos_container = Div(
+    text='',
+    sizing_mode='stretch_width',
+    styles={
+        'display': 'flex',
+        'flex-wrap': 'wrap',
+        'gap': '10px'
+    }
+)
+cbg_combos_container.children = [cbg_combos]
+
+controls_row_proteins = row(
+    cbg_tests_wrapped,
+    cbg_tests_container,
+    sizing_mode='stretch_width',
+    styles={
+        'display': 'flex', 
+        'flex-wrap': 'wrap',
+        'align-items': 'flex-start'
+    }
+)
+controls_row_combos = row(
+    cbg_combos_wrapped,
+    cbg_combos_container,
+    sizing_mode='stretch_width',
+    styles={
+        'display': 'flex', 
+        'flex-wrap': 'wrap',
+        'align-items': 'flex-start'
+    }
+)
+
+controls_section_layout = column(
+    controls_row_proteins,
+    controls_row_combos,
     sizing_mode='stretch_width'
 )
 
@@ -961,6 +1018,7 @@ main_layout = column(
     header,
     visualization_section,
     controls_section,
+    controls_section_layout,
     data_table,
     sizing_mode='stretch_width'
 )
@@ -968,87 +1026,3 @@ main_layout = column(
 # Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
-
-###############################################################################
-# 7) CORRELATION TABLE AND FILTERS (Moved Earlier for Logical Flow)
-###############################################################################
-
-# (D) CORRELATION TABLE
-if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-else:
-    source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-
-# (E) FILTERS for correlation table
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
-if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
-        for _, row in df_all_corr.iterrows()
-    })
-else:
-    combo_options = []
-
-cbg_tests = CheckboxButtonGroup(
-    labels=tests_in_corr,
-    active=[]
-)
-cbg_combos = CheckboxButtonGroup(
-    labels=combo_options,
-    active=[]
-)
-
-def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
-    if df_all_corr.empty:
-        return
-    selected_tests = [cbg_tests.labels[i] for i in cbg_tests.active]
-    selected_combos = [cbg_combos.labels[i] for i in cbg_combos.active]
-    
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
-        
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
-    
-    source_corr.data = filtered.to_dict(orient="list")
-
-cbg_tests.on_change("active", update_corr_filter)
-cbg_combos.on_change("active", update_corr_filter)
-
-###############################################################################
-# 8) Summary of Additions
-###############################################################################
-# - Removed the invalid 'tools_tooltips' parameter from the figure definition.
-# - Added HoverTool explicitly where needed.
-# - Integrated the additional plots below the Unity iframe and above the Spearman correlation table.
-# - Ensured consistent theming using Category10 palette.
-# - Verified that all figures have correct tool configurations.
