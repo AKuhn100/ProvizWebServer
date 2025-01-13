@@ -7,7 +7,7 @@ from scipy.stats import spearmanr, linregress
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider, Whisker, Label
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider, Whisker, Label, Range1d
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
@@ -1020,11 +1020,11 @@ custom_styles = Div(text="""
 """)
 
 # (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
-# (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
 def create_bar_plot_with_sd(data_proviz):
     """
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
     with error bars representing the standard deviation.
+    Adjusts the y-axis range to ensure whiskers are fully visible.
     """
     # Compute mean and standard deviation of Spearman Rho per metric
     spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
@@ -1081,6 +1081,17 @@ def create_bar_plot_with_sd(data_proviz):
     source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
     source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
 
+    # **New Addition**: Adjust y-axis range to include padding
+    # Determine the minimum and maximum values for the y-axis
+    min_lower = source_bar.data['lower'].min()
+    max_upper = source_bar.data['upper'].max()
+
+    # Calculate padding (10% of the range)
+    y_padding = (max_upper - min_lower) * 0.1 if (max_upper - min_lower) != 0 else 1
+
+    # Set the y_range with padding
+    p_bar.y_range = Range1d(start=min_lower - y_padding, end=max_upper + y_padding)
+
     # Add horizontal line at y=0 for reference
     p_bar.line(x=[-0.5, len(stats_corrs) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
 
@@ -1100,7 +1111,7 @@ def create_bar_plot_with_sd(data_proviz):
     p_bar.legend.visible = False
 
     return p_bar
-    
+
 # (F) Layout for Additional Plots
 additional_plots = column(
     p_avg,
