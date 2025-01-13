@@ -1020,6 +1020,7 @@ custom_styles = Div(text="""
 """)
 
 # (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
+# (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
 def create_bar_plot_with_sd(data_proviz):
     """
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
@@ -1037,7 +1038,7 @@ def create_bar_plot_with_sd(data_proviz):
     # Clean Metric names
     stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 
-    # Assign colors based on Metric
+    # Assign colors based on Metric using the predefined FRUSTRATION_COLORS dictionary
     stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
 
     # Create ColumnDataSource for the bar plot
@@ -1055,13 +1056,13 @@ def create_bar_plot_with_sd(data_proviz):
         toolbar_location="above"
     )
 
-    # Add vertical bars
-    p_bar.vbar(
+    # Add vertical bars and capture the renderer
+    vbar_renderer = p_bar.vbar(
         x='Metric',
         top='Mean_Spearman_Rho',
         width=0.6,
         source=source_bar,
-        color='Color',  # Reference the 'Color' column
+        color='Color',  # Reference the 'Color' column in the data source
         legend_label="Frustration Metric",
         line_color="black"
     )
@@ -1069,32 +1070,28 @@ def create_bar_plot_with_sd(data_proviz):
     # Add error bars using Whisker
     whisker = Whisker(
         base='Metric',
-        upper='Mean_Spearman_Rho',
-        lower='Mean_Spearman_Rho',
+        upper='upper',
+        lower='lower',
         source=source_bar,
-        upper_head=None,
-        lower_head=None,
         level="overlay"
     )
     p_bar.add_layout(whisker)
 
-    # Manually calculate upper and lower for error bars
+    # Calculate upper and lower bounds for error bars
     source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
     source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
-    whisker.upper = 'upper'
-    whisker.lower = 'lower'
 
     # Add horizontal line at y=0 for reference
     p_bar.line(x=[-0.5, len(stats_corrs) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
 
-    # Customize hover tool
+    # Customize hover tool and correctly reference the vbar renderer
     hover_bar = HoverTool(
         tooltips=[
             ("Metric", "@Metric"),
             ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
             ("Std Dev", "@Std_Spearman_Rho{0.3f}")
         ],
-        renderers=[p_bar.vbar],
+        renderers=[vbar_renderer],  # Correctly pass the renderer
         mode='mouse'
     )
     p_bar.add_tools(hover_bar)
@@ -1103,7 +1100,7 @@ def create_bar_plot_with_sd(data_proviz):
     p_bar.legend.visible = False
 
     return p_bar
-
+    
 # (F) Layout for Additional Plots
 additional_plots = column(
     p_avg,
