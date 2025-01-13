@@ -8,8 +8,9 @@ from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxGroup, Div, Spacer,
     DataTable, TableColumn, NumberFormatter, HoverTool, 
-    GlyphRenderer, Slider, Whisker, Label, Range1d, Theme
+    GlyphRenderer, Slider, Whisker, Label, Range1d
 )
+from bokeh.themes import Theme  # Corrected import
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
