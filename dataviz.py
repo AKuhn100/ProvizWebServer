@@ -2,12 +2,12 @@ import os
 import pandas as pd
 import numpy as np
 import re
-from scipy.stats import spearmanr, linregress
+from scipy.stats import spearmanr, linregress, ttest_1samp
 
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, MultiSelect,  # Replaced CheckboxButtonGroup with MultiSelect
-    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider
+    DataTable, TableColumn, NumberFormatter, Div, HoverTool, GlyphRenderer, Slider, Whisker, Label
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
@@ -893,7 +893,6 @@ for frust in frust_types_corr:
         'x', 'y',
         source=mean_source,
         color=color_map_corr[frust],
-        line_width=2,
         line_dash='dashed',
         name=f'mean_line_{frust}'
     )
@@ -916,6 +915,7 @@ p_corr.legend.click_policy = "mute"
 # Rotate x-axis labels to prevent overlapping
 from math import pi
 p_corr.xaxis.major_label_orientation = pi / 4  # 45 degrees
+
 
 ###############################################################################
 # 7) User Interface Components
@@ -1029,7 +1029,164 @@ additional_plots = column(
     name="additional_plots"
 )
 
-# Create columns for each scatter plot and its regression info with minimum width
+# (G) NEW: Bar Plot with Mean, SD, and T-Test Results
+def create_bar_plot_with_sd_and_ttest(data_proviz):
+    """
+    Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
+    with error bars representing the standard deviation and annotations for t-test results.
+    """
+    # Compute mean and standard deviation of Spearman Rho per metric
+    spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
+    stats_corrs = data_proviz[spearman_columns].agg(['mean', 'std']).transpose().reset_index()
+    stats_corrs.rename(columns={
+        'index': 'Metric',
+        'mean': 'Mean_Spearman_Rho',
+        'std': 'Std_Spearman_Rho'
+    }, inplace=True)
+    
+    # Clean Metric names
+    stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+    
+    # Perform one-sample t-tests against 0 for each metric
+    p_values = []
+    significance = []
+    for metric in stats_corrs['Metric']:
+        # Map back to original column name
+        original_col = f'Spearman_{metric.replace(".", "")}'
+        spearman_values = data_proviz[original_col].dropna()
+        if len(spearman_values) > 1:
+            t_stat, p_val = ttest_1samp(spearman_values, 0)
+            p_values.append(p_val)
+            # Determine significance level
+            if p_val < 0.001:
+                sig = '***'
+            elif p_val < 0.01:
+                sig = '**'
+            elif p_val < 0.05:
+                sig = '*'
+            else:
+                sig = 'ns'  # not significant
+            significance.append(sig)
+        else:
+            p_values.append(np.nan)
+            significance.append('n/a')  # not enough data
+    
+    # Add p-values and significance to stats_corrs
+    stats_corrs['P_Value'] = p_values
+    stats_corrs['Significance'] = significance
+    
+    # Create ColumnDataSource for the bar plot
+    source_bar = ColumnDataSource(stats_corrs)
+    
+    # Create figure
+    p_bar = figure(
+        title="Mean Spearman Correlation between B-Factor and Frustration Metrics",
+        x_axis_label="Frustration Metric",
+        y_axis_label="Mean Spearman Rho",
+        x_range=stats_corrs['Metric'].tolist(),
+        sizing_mode='stretch_width',
+        height=400,
+        tools="pan,wheel_zoom,box_zoom,reset,save",
+        toolbar_location="above"
+    )
+    
+    # Add vertical bars
+    p_bar.vbar(
+        x='Metric',
+        top='Mean_Spearman_Rho',
+        width=0.6,
+        source=source_bar,
+        color=[FRUSTRATION_COLORS.get(metric, Category10[10][0]) for metric in stats_corrs['Metric']],
+        legend_label="Frustration Metric",
+        line_color="black"
+    )
+    
+    # Add error bars using Whisker
+    whisker = Whisker(
+        base='Metric',
+        upper='Mean_Spearman_Rho',
+        lower='Mean_Spearman_Rho',
+        source=source_bar,
+        upper_head=None,
+        lower_head=None,
+        level="overlay"
+    )
+    p_bar.add_layout(whisker)
+    
+    # Add standard deviation as error bars
+    whisker_upper = Whisker(
+        base='Metric',
+        upper='Mean_Spearman_Rho',
+        lower='Mean_Spearman_Rho',
+        source=source_bar,
+        upper_head="circle",
+        lower_head="circle",
+        line_color="black",
+        line_width=2
+    )
+    p_bar.add_layout(whisker_upper)
+    
+    # Manually calculate upper and lower for error bars
+    source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
+    source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
+    whisker_upper.upper = 'upper'
+    whisker_upper.lower = 'lower'
+    
+    # Add horizontal line at y=0 for reference
+    p_bar.line(x=[-0.5, len(stats_corrs) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
+    
+    # Add annotations for significance
+    for index, row in stats_corrs.iterrows():
+        metric = row['Metric']
+        mean = row['Mean_Spearman_Rho']
+        std = row['Std_Spearman_Rho']
+        sig = row['Significance']
+        color = FRUSTRATION_COLORS.get(metric, Category10[10][0])
+        
+        if sig != 'n/a' and not pd.isna(sig):
+            # Determine y position based on mean
+            if mean >= 0:
+                y_position = mean + std + 0.02 * abs(mean)
+                y_anchor = 'bottom'
+            else:
+                y_position = mean - std - 0.02 * abs(mean)
+                y_anchor = 'top'
+            
+            # Add text annotation
+            label = Label(
+                x=metric,
+                y=y_position,
+                text=sig,
+                text_font_size="14pt",
+                text_color=color,
+                text_align='center',
+                text_baseline=y_anchor
+            )
+            p_bar.add_layout(label)
+    
+    # Customize hover tool
+    hover_bar = HoverTool(
+        tooltips=[
+            ("Metric", "@Metric"),
+            ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
+            ("Std Dev", "@Std_Spearman_Rho{0.3f}"),
+            ("P-Value", "@P_Value{0.3e}"),
+            ("Significance", "@Significance")
+        ],
+        renderers=[p_bar.vbar],
+        mode='mouse'
+    )
+    p_bar.add_tools(hover_bar)
+    
+    # Remove legend as it's redundant with colors
+    p_bar.legend.visible = False
+    
+    return p_bar
+
+# (G) NEW: Generate Bar Plot with Mean, SD, and T-Test Results
+p_bar = create_bar_plot_with_sd_and_ttest(data_proviz)
+
+# (H) Scatter Plots Layout
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
@@ -1065,7 +1222,18 @@ scatter_row = row(
     }
 )
 
-# Main layout with slider and additional plots
+# (I) NEW: Add Bar Plot to Additional Plots
+additional_plots = column(
+    p_avg,
+    p_std,
+    p_corr,
+    p_bar,  # Integrated Bar Plot
+    sizing_mode='stretch_width',
+    spacing=20,
+    name="additional_plots"
+)
+
+# (J) Main layout with slider and additional plots
 visualization_section = column(
     select_file,
     window_slider,
