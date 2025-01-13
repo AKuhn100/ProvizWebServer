@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import re
-from scipy.stats import spearmanr, linregress, ttest_1samp
+from scipy.stats import spearmanr, linregress
 
 from bokeh.io import curdoc
 from bokeh.models import (
@@ -38,7 +38,7 @@ def moving_average(arr, window_size=5):
     n = len(arr)
     out = np.full(n, np.nan)
     halfw = window_size // 2
-    
+
     for i in range(n):
         if np.isnan(arr[i]):
             continue
@@ -55,33 +55,33 @@ def parse_summary_file(local_path):
     Parses a summary file and returns original and processed DataFrames along with correlations.
     """
     required_cols = ["AlnIndex", "Residue", "B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
-    
+
     if not os.path.isfile(local_path):
         print(f"File not found: {local_path}")
         return None, None, {}
-    
+
     try:
         df = pd.read_csv(local_path, sep='\t')
     except Exception as e:
         print(f"Skipping {local_path}: failed to parse data. Error: {e}")
         return None, None, {}
-    
+
     # Check for required columns
     if not set(required_cols).issubset(df.columns):
         print(f"Skipping {local_path}: missing required columns.")
         return None, None, {}
-    
+
     # Replace 'n/a' with NaN and convert to float
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
-    
+
     df_original = df.copy()
     df_for_plot = df.copy()
-    
+
     # Apply moving average
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         df_for_plot[col] = moving_average(df_for_plot[col].values, window_size=5)
-    
+
     # Min-Max normalization
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         valid = ~df_for_plot[col].isna()
@@ -90,7 +90,7 @@ def parse_summary_file(local_path):
             col_max = df_for_plot.loc[valid, col].max()
             if col_max > col_min:
                 df_for_plot[col] = (df_for_plot[col] - col_min) / (col_max - col_min)
-    
+
     # Compute Spearman correlations on original data
     corrs = {}
     sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
@@ -109,7 +109,7 @@ def parse_summary_file(local_path):
             else:
                 rho, pval = spearmanr(sub[mA], sub[mB])
             corrs[(mA, mB)] = (rho, pval)
-    
+
     return df_original, df_for_plot, corrs
 
 
@@ -142,31 +142,31 @@ for filename in os.listdir(DATA_DIR):
     if not re.match(FILE_PATTERN, filename):
         print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
         continue
-    
+
     file_path = os.path.join(DATA_DIR, filename)
     df_orig, df_plot, corrs = parse_summary_file(file_path)
     if df_orig is None:
         continue
-    
+
     data_by_file[filename] = {
         "df_original": df_orig,
         "df_for_plot": df_plot,
         "corrs": corrs
     }
-    
+
     # Collect correlation data
     for combo, (rho, pval) in corrs.items():
         mA, mB = combo
         all_corr_rows.append([filename, mA, mB, rho, pval])
-    
+
     # Aggregate data for additional plots
     avg_b = df_orig['B_Factor'].mean()
     std_b = df_orig['B_Factor'].std()
-    
+
     spearman_r_exp = corrs.get(("B_Factor", "ExpFrust"), (np.nan, np.nan))[0]
     spearman_r_af = corrs.get(("B_Factor", "AFFrust"), (np.nan, np.nan))[0]
     spearman_r_evol = corrs.get(("B_Factor", "EvolFrust"), (np.nan, np.nan))[0]
-    
+
     protein_names.append(filename)
     avg_bfactors.append(avg_b)
     std_bfactors.append(std_b)
@@ -385,38 +385,38 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         if info_div:
             info_div.text = "Insufficient data for regression"
         return
-    
+
     not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
     if not any(not_nan):
         if info_div:
             info_div.text = "No valid data points"
         return
-    
+
     xvals_clean = xvals[not_nan]
     yvals_clean = yvals[not_nan]
     if len(xvals_clean) < 2:
         if info_div:
             info_div.text = "Insufficient data for regression"
         return
-    
+
     # Linear regression
     slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
-    
+
     # Plot regression line visibly
     x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
     y_range = slope * x_range + intercept
     fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
-    
+
     # Create a separate data source for regression line hover
     regression_source = ColumnDataSource(data=dict(
         x=x_range,
         y=y_range,
         equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
     ))
-    
+
     # Plot regression line again with this data source, invisible (for hover)
     invisible_regression = fig.line('x', 'y', source=regression_source, line_width=10, alpha=0, name='regression_hover')  # Increased line_width for better hover area
-    
+
     # Add a separate HoverTool for the regression line
     hover_regression = HoverTool(
         renderers=[invisible_regression],
@@ -426,7 +426,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         mode='mouse'
     )
     fig.add_tools(hover_regression)
-    
+
     # Update regression info div with equation
     if info_div:
         info_div.text = f"""
@@ -485,19 +485,19 @@ def update_plot(attr, old, new):
         regression_info_af.text = ""
         regression_info_evol.text = ""
         return
-    
+
     # Get window size from slider
     window_size = window_slider.value
-    
+
     # Update main line plot with new window size
     df_orig = data_by_file[filename]["df_original"]
     df_plot = df_orig.copy()
-    
+
     # Apply moving average with current window size
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_plot[col].values
         df_plot[col] = moving_average(arr, window_size=window_size)
-    
+
     # Normalize the smoothed data
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_plot[col].values
@@ -508,7 +508,7 @@ def update_plot(attr, old, new):
         col_max = np.nanmax(arr)
         if col_max > col_min:
             df_plot[col] = (arr - col_min) / (col_max - col_min)
-    
+
     sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
@@ -524,25 +524,25 @@ def update_plot(attr, old, new):
         )
         source_plot.data = new_data
         p.title.text = f"{filename} (Smoothed + Normalized)"
-    
+
     # Update scatter plots (using NON-smoothed data)
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    
+
     # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_hover'
     p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_hover']
     p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_hover']
     p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_hover']
-    
+
     # Reset data sources
     source_scatter_exp.data = dict(x=[], y=[])
     source_scatter_af.data = dict(x=[], y=[])
     source_scatter_evol.data = dict(x=[], y=[])
-    
+
     regression_info_exp.text = ""
     regression_info_af.text = ""
     regression_info_evol.text = ""
-    
+
     if sub_orig.empty:
         p_scatter_exp.title.text = f"{filename} (No Data)"
         p_scatter_af.title.text = f"{filename} (No Data)"
@@ -554,14 +554,14 @@ def update_plot(attr, old, new):
         source_scatter_exp.data = dict(x=x_exp, y=y_exp)
         p_scatter_exp.title.text = f"{filename} Experimental Frustration"
         add_regression_line_and_info(p_scatter_exp, x_exp, y_exp, color=Category10[10][1], info_div=regression_info_exp)
-        
+
         # AFFrust
         x_af = sub_orig["B_Factor"].values
         y_af = sub_orig["AFFrust"].values
         source_scatter_af.data = dict(x=x_af, y=y_af)
         p_scatter_af.title.text = f"{filename} AF Frustration"
         add_regression_line_and_info(p_scatter_af, x_af, y_af, color=Category10[10][2], info_div=regression_info_af)
-        
+
         # EvolFrust
         x_evol = sub_orig["B_Factor"].values
         y_evol = sub_orig["EvolFrust"].values
@@ -632,13 +632,13 @@ def update_corr_filter(attr, old, new):
         return
     selected_tests = multi_tests.value
     selected_combos = multi_combos.value
-    
+
     if not selected_tests and not selected_combos:
         filtered = df_all_corr
     else:
         df_tmp = df_all_corr.copy()
         df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
-        
+
         if selected_tests and selected_combos:
             filtered = df_tmp[
                 (df_tmp["Test"].isin(selected_tests)) &
@@ -650,7 +650,7 @@ def update_corr_filter(attr, old, new):
             filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
         else:
             filtered = df_all_corr
-    
+
     source_corr.data = filtered.to_dict(orient="list")
 
 multi_tests.on_change("value", update_corr_filter)
@@ -705,19 +705,19 @@ for frust in frust_types:
         muted_alpha=0.1,
         name=f'scatter_{frust}'  # Add name to the renderer
     )
-    
+
     # Add regression lines with hover
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-        
+
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
-        
+
         regression_line = p_avg.line(
             'x', 'y', 
             source=regression_source, 
@@ -725,7 +725,7 @@ for frust in frust_types:
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
-        
+
         hover_regression = HoverTool(
             renderers=[regression_line],
             tooltips=[
@@ -778,19 +778,19 @@ for frust in frust_types:
         muted_alpha=0.1,
         name=f'scatter_{frust}'  # Add name to the renderer
     )
-    
+
     # Add regression lines with hover
     if len(subset) >= 2:
         slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
         x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
         y_range = slope * x_range + intercept
-        
+
         regression_source = ColumnDataSource(data=dict(
             x=x_range,
             y=y_range,
             equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
         ))
-        
+
         regression_line = p_std.line(
             'x', 'y', 
             source=regression_source, 
@@ -798,7 +798,7 @@ for frust in frust_types:
             line_dash='dashed',
             name=f'regression_line_{frust}'
         )
-        
+
         hover_regression = HoverTool(
             renderers=[regression_line],
             tooltips=[
@@ -879,7 +879,7 @@ for frust in frust_types_corr:
 for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     mean_value = subset['Spearman_Rho'].mean()
-    
+
     # Create source for the mean line with hover information
     mean_source = ColumnDataSource(data=dict(
         x=[-0.5, len(data_proviz['Protein']) - 0.5],
@@ -887,7 +887,7 @@ for frust in frust_types_corr:
         mean_value=[f"{mean_value:.3f}"] * 2,
         frust_type=[frust] * 2
     ))
-    
+
     # Add mean line with hover
     mean_line = p_corr.line(
         'x', 'y',
@@ -896,7 +896,7 @@ for frust in frust_types_corr:
         line_dash='dashed',
         name=f'mean_line_{frust}'
     )
-    
+
     # Add hover tool for mean line
     mean_hover = HoverTool(
         renderers=[mean_line],
@@ -1019,21 +1019,11 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# (F) Layout for Additional Plots
-additional_plots = column(
-    p_avg,
-    p_std,
-    p_corr,
-    sizing_mode='stretch_width',
-    spacing=20,
-    name="additional_plots"
-)
-
-# (G) NEW: Bar Plot with Mean, SD, and T-Test Results
-def create_bar_plot_with_sd_and_ttest(data_proviz):
+# (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
+def create_bar_plot_with_sd(data_proviz):
     """
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
-    with error bars representing the standard deviation and annotations for t-test results.
+    with error bars representing the standard deviation.
     """
     # Compute mean and standard deviation of Spearman Rho per metric
     spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
@@ -1043,41 +1033,16 @@ def create_bar_plot_with_sd_and_ttest(data_proviz):
         'mean': 'Mean_Spearman_Rho',
         'std': 'Std_Spearman_Rho'
     }, inplace=True)
-    
+
     # Clean Metric names
     stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-    
-    # Perform one-sample t-tests against 0 for each metric
-    p_values = []
-    significance = []
-    for metric in stats_corrs['Metric']:
-        # Map back to original column name
-        original_col = f'Spearman_{metric.replace(".", "")}'
-        spearman_values = data_proviz[original_col].dropna()
-        if len(spearman_values) > 1:
-            t_stat, p_val = ttest_1samp(spearman_values, 0)
-            p_values.append(p_val)
-            # Determine significance level
-            if p_val < 0.001:
-                sig = '***'
-            elif p_val < 0.01:
-                sig = '**'
-            elif p_val < 0.05:
-                sig = '*'
-            else:
-                sig = 'ns'  # not significant
-            significance.append(sig)
-        else:
-            p_values.append(np.nan)
-            significance.append('n/a')  # not enough data
-    
-    # Add p-values and significance to stats_corrs
-    stats_corrs['P_Value'] = p_values
-    stats_corrs['Significance'] = significance
-    
+
+    # Assign colors based on Metric
+    stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
+
     # Create ColumnDataSource for the bar plot
     source_bar = ColumnDataSource(stats_corrs)
-    
+
     # Create figure
     p_bar = figure(
         title="Mean Spearman Correlation between B-Factor and Frustration Metrics",
@@ -1089,18 +1054,18 @@ def create_bar_plot_with_sd_and_ttest(data_proviz):
         tools="pan,wheel_zoom,box_zoom,reset,save",
         toolbar_location="above"
     )
-    
+
     # Add vertical bars
     p_bar.vbar(
         x='Metric',
         top='Mean_Spearman_Rho',
         width=0.6,
         source=source_bar,
-        color=[FRUSTRATION_COLORS.get(metric, Category10[10][0]) for metric in stats_corrs['Metric']],
+        color='Color',  # Reference the 'Color' column
         legend_label="Frustration Metric",
         line_color="black"
     )
-    
+
     # Add error bars using Whisker
     whisker = Whisker(
         base='Metric',
@@ -1112,81 +1077,45 @@ def create_bar_plot_with_sd_and_ttest(data_proviz):
         level="overlay"
     )
     p_bar.add_layout(whisker)
-    
-    # Add standard deviation as error bars
-    whisker_upper = Whisker(
-        base='Metric',
-        upper='Mean_Spearman_Rho',
-        lower='Mean_Spearman_Rho',
-        source=source_bar,
-        upper_head="circle",
-        lower_head="circle",
-        line_color="black",
-        line_width=2
-    )
-    p_bar.add_layout(whisker_upper)
-    
+
     # Manually calculate upper and lower for error bars
     source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
     source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
-    whisker_upper.upper = 'upper'
-    whisker_upper.lower = 'lower'
-    
+    whisker.upper = 'upper'
+    whisker.lower = 'lower'
+
     # Add horizontal line at y=0 for reference
     p_bar.line(x=[-0.5, len(stats_corrs) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
-    
-    # Add annotations for significance
-    for index, row in stats_corrs.iterrows():
-        metric = row['Metric']
-        mean = row['Mean_Spearman_Rho']
-        std = row['Std_Spearman_Rho']
-        sig = row['Significance']
-        color = FRUSTRATION_COLORS.get(metric, Category10[10][0])
-        
-        if sig != 'n/a' and not pd.isna(sig):
-            # Determine y position based on mean
-            if mean >= 0:
-                y_position = mean + std + 0.02 * abs(mean)
-                y_anchor = 'bottom'
-            else:
-                y_position = mean - std - 0.02 * abs(mean)
-                y_anchor = 'top'
-            
-            # Add text annotation
-            label = Label(
-                x=metric,
-                y=y_position,
-                text=sig,
-                text_font_size="14pt",
-                text_color=color,
-                text_align='center',
-                text_baseline=y_anchor
-            )
-            p_bar.add_layout(label)
-    
+
     # Customize hover tool
     hover_bar = HoverTool(
         tooltips=[
             ("Metric", "@Metric"),
             ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
-            ("Std Dev", "@Std_Spearman_Rho{0.3f}"),
-            ("P-Value", "@P_Value{0.3e}"),
-            ("Significance", "@Significance")
+            ("Std Dev", "@Std_Spearman_Rho{0.3f}")
         ],
         renderers=[p_bar.vbar],
         mode='mouse'
     )
     p_bar.add_tools(hover_bar)
-    
+
     # Remove legend as it's redundant with colors
     p_bar.legend.visible = False
-    
+
     return p_bar
 
-# (G) NEW: Generate Bar Plot with Mean, SD, and T-Test Results
-p_bar = create_bar_plot_with_sd_and_ttest(data_proviz)
+# (F) Layout for Additional Plots
+additional_plots = column(
+    p_avg,
+    p_std,
+    p_corr,
+    create_bar_plot_with_sd(data_proviz),  # Integrated Bar Plot without T-Tests
+    sizing_mode='stretch_width',
+    spacing=20,
+    name="additional_plots"
+)
 
-# (H) Scatter Plots Layout
+# (G) Scatter Plots Layout
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
@@ -1222,18 +1151,7 @@ scatter_row = row(
     }
 )
 
-# (I) NEW: Add Bar Plot to Additional Plots
-additional_plots = column(
-    p_avg,
-    p_std,
-    p_corr,
-    p_bar,  # Integrated Bar Plot
-    sizing_mode='stretch_width',
-    spacing=20,
-    name="additional_plots"
-)
-
-# (J) Main layout with slider and additional plots
+# (I) Main layout with slider and additional plots
 visualization_section = column(
     select_file,
     window_slider,
