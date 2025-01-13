@@ -858,8 +858,8 @@ hover_corr = HoverTool(
 )
 p_corr.add_tools(hover_corr)
 
-# Add horizontal line at y=0
-p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
+# # Add horizontal line at y=0
+# p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
 
 # Add scatter glyphs
 for frust in frust_types_corr:
