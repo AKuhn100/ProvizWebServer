@@ -727,18 +727,29 @@ frust_types = data_long_avg['Frust_Type'].unique().tolist()
 palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
 color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
 
-# First, create scatter plots with their hover tool
-hover_scatter_avg = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    mode='mouse'
-)
-p_avg.add_tools(hover_scatter_avg)
+# Spearman Rho vs Average B-Factor
+source_avg = ColumnDataSource(data_long_avg)
 
-# Add scatter glyphs with named renderers
+p_avg = figure(
+    title="Spearman Correlation vs Average B-Factor",
+    x_axis_label="Average B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    sizing_mode='stretch_width',
+    height=400,
+    tools="pan,wheel_zoom,box_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+# Define color palette for Frustration Types
+frust_types = data_long_avg['Frust_Type'].unique().tolist()
+palette = Category10[max(3, len(frust_types))]  # Ensure enough colors
+color_map_frust = {frust: palette[i] for i, frust in enumerate(frust_types)}
+
+# Create a list to hold scatter renderers
+scatter_renderers_avg = []
+
+# Add scatter glyphs with named renderers and collect renderers
 for frust in frust_types:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
@@ -752,6 +763,7 @@ for frust in frust_types:
         muted_alpha=0.1,
         name=f'scatter_{frust}'  # Add name to the renderer
     )
+    scatter_renderers_avg.append(scatter)
 
     # Add regression lines with hover
     if len(subset) >= 2:
@@ -773,6 +785,7 @@ for frust in frust_types:
             name=f'regression_line_{frust}'  # Unique name based on frust type
         )
 
+        # Add HoverTool only to the regression_line
         hover_regression = HoverTool(
             renderers=[regression_line],
             tooltips=[
@@ -781,6 +794,18 @@ for frust in frust_types:
             mode='mouse'
         )
         p_avg.add_tools(hover_regression)
+
+# Create and add the standard HoverTool only for the scatter renderers
+hover_scatter_avg = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    renderers=scatter_renderers_avg,  # Only attach to scatter renderers
+    mode='mouse'
+)
+p_avg.add_tools(hover_scatter_avg)
 
 p_avg.legend.location = "top_left"
 p_avg.legend.title = "Frustration Type"
