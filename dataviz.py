@@ -10,7 +10,6 @@ from bokeh.models import (
     DataTable, TableColumn, NumberFormatter, HoverTool, 
     GlyphRenderer, Slider, Whisker, Label, Range1d
 )
-from bokeh.themes import Theme  # Corrected import
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
@@ -26,6 +25,7 @@ FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove as needed
 
 # Default file to visualize on startup
 DEFAULT_FILE = "summary_test001.txt"  # Change to your preferred default or set to ""
+
 
 ###############################################################################
 # 2) Helpers: Data Parsing and Aggregation
@@ -351,10 +351,9 @@ source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[]))
 regression_info_exp = Div(
     text="", 
     styles={
-        'background-color': '#2e2e2e',  # Dark background for consistency
-        'color': '#ffffff',             # Light text
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #444',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
@@ -366,10 +365,9 @@ regression_info_exp = Div(
 regression_info_af = Div(
     text="",
     styles={
-        'background-color': '#2e2e2e',
-        'color': '#ffffff',
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #444',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
@@ -381,10 +379,9 @@ regression_info_af = Div(
 regression_info_evol = Div(
     text="",
     styles={
-        'background-color': '#2e2e2e',
-        'color': '#ffffff',
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #444',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
@@ -394,6 +391,7 @@ regression_info_evol = Div(
     sizing_mode="stretch_width"
 )
 
+# Initial scatter glyphs (empty)
 p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][1], alpha=0.7)
 p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7)
 p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7)
@@ -482,8 +480,7 @@ else:
 select_file = Select(
     title="Select Protein (summary_XXXX.txt):",
     value=initial_file,
-    options=file_options,
-    styles={'background-color': '#444', 'color': '#fff'}
+    options=file_options
 )
 
 # Add slider for moving average window size
@@ -493,8 +490,7 @@ window_slider = Slider(
     value=5, 
     step=2, 
     title="Moving Average Window Size",
-    width=400,
-    styles={'background-color': '#444', 'color': '#fff'}
+    width=400
 )
 
 def update_moving_average(attr, old, new):
@@ -656,7 +652,7 @@ else:
         TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
     ]
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
-    
+
 # (E) FILTERS for correlation table
 
 # Define helper function to split labels into columns
@@ -691,8 +687,7 @@ if not df_all_corr.empty:
         CheckboxGroup(
             labels=col_labels,
             active=[],  # Initially no selection
-            name=f'tests_column_{i+1}',
-            styles={'background-color': '#444', 'color': '#fff'}
+            name=f'tests_column_{i+1}'
         ) for i, col_labels in enumerate(test_labels_split)
     ]
     
@@ -701,8 +696,7 @@ if not df_all_corr.empty:
         CheckboxGroup(
             labels=col_labels,
             active=[],  # Initially no selection
-            name=f'combos_column_{i+1}',
-            styles={'background-color': '#444', 'color': '#fff'}
+            name=f'combos_column_{i+1}'
         ) for i, col_labels in enumerate(combo_labels_split)
     ]
 else:
@@ -714,8 +708,8 @@ tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width', width=3
 combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width', width=300)
 
 # Add Titles Above Each CheckboxGroup
-tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px', 'color': '#ffffff'})
-combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px', 'color': '#ffffff'})
+tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
 
 # Combine Titles and CheckboxGroups into Columns
 tests_column = column(tests_title, tests_layout, sizing_mode='stretch_width')
@@ -771,7 +765,6 @@ def update_corr_filter(attr, old, new):
 # Attach callbacks to all CheckboxGroups
 for checkbox in checkbox_tests_columns + checkbox_combos_columns:
     checkbox.on_change('active', update_corr_filter)
-
 
 ###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
@@ -919,6 +912,7 @@ for frust in frust_types_std:
             name=f'regression_line_{frust}'  # Unique name based on frust type
         )
 
+        # Add HoverTool only to the regression_line
         hover_regression = HoverTool(
             renderers=[regression_line],
             tooltips=[
@@ -1062,8 +1056,8 @@ p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
 # Add header and description
 header = Div(text="""
-    <h1 style="color: #ffffff;">Evolutionary Frustration</h1>
-    <p style="color: #cccccc;">
+    <h1>Evolutionary Frustration</h1>
+    <p>
         Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores 
         and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. 
         By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics, 
@@ -1074,14 +1068,14 @@ header = Div(text="""
         <li><strong>AF Frustration</strong>: Derived via the Frustratometer using an AlphaFold structure.</li>
         <li><strong>Evolutionary Frustration</strong>: Derived directly from sequence alignment (no structure needed).</li>
     </ul>
-    <p style="color: #cccccc;">
+    <p>
         The correlation table below shows Spearman correlation coefficients and p-values for <em>non-smoothed</em> data. 
         The curves in the main plot are <em>smoothed</em> with a simple moving average and 
         <strong>min–max normalized</strong> (per protein). Normalization does not affect Spearman correlations but be mindful 
         that min–max scaling is not suitable for comparing magnitudes <em>across</em> proteins.
     </p>
-    <h3 style="color: #ffffff;">Contributors</h3>
-    <p style="color: #cccccc;">
+    <h3>Contributors</h3>
+    <p>
         <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, 
         George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
         <sup>1</sup>Department of Physics, Rice University<br>
@@ -1093,8 +1087,8 @@ header = Div(text="""
 
 # Unity Container
 description_visualizer = Div(text="""
-    <h2 style="color: #ffffff;">Protein Visualizer Instructions</h2>
-    <p style="color: #cccccc;">
+    <h2>Protein Visualizer Instructions</h2>
+    <p>
         The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
     </p>
     <ul>
@@ -1113,8 +1107,8 @@ unity_iframe = Div(
     <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
         <iframe 
             src="https://igotintogradschool2025.site/unity/"
-            style="width: 95vw; height: 90vh; border: 2px solid #555; border-radius: 8px; 
-                   box-shadow: 0 4px 6px rgba(0,0,0,0.5); background-color: #333;"
+            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
+                   box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
             allowfullscreen>
         </iframe>
@@ -1132,53 +1126,27 @@ unity_container = column(
 )
 
 # Controls section
-controls_section = Div(text="<b style='color: #ffffff;'>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
+controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
 # Arrange CheckboxGroup widgets in the controls_layout already defined above
 # Removed the old MultiSelect widgets and replaced with CheckboxGroups arranged in columns
 
-# Custom styles including dark background for the entire page
+# Custom styles
 custom_styles = Div(text="""
     <style>
-        body {
-            background-color: #2e2e2e;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
+        .visualization-section {
+            margin: 20px 0;
+            width: 100%;
+        }
+        .controls-row {
+            margin: 10px 0;
+            gap: 10px;
         }
         .bk-root {
-            background-color: #2e2e2e;
-            color: #ffffff;
-        }
-        .bk-data-table {
-            background-color: #3c3c3c;
-            color: #ffffff;
-        }
-        .bk-table th {
-            background-color: #555555;
-            color: #ffffff;
-        }
-        .bk-table td {
-            background-color: #3c3c3c;
-            color: #ffffff;
-        }
-        .bk-widget-label {
-            color: #ffffff;
-        }
-        /* Scrollbar styling for CheckboxGroups */
-        .bk-checkbox-group {
-            overflow-y: auto;
-            max-height: 200px;
-            padding: 5px;
-            background-color: #3c3c3c;
-            border: 1px solid #555555;
-            border-radius: 4px;
-        }
-        /* Adjusting iframe background if possible */
-        iframe {
-            background-color: #333333;
+            width: 100% !important;
         }
     </style>
-""", sizing_mode='stretch_width')
+""")
 
 # (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
 def create_bar_plot_with_sd(data_proviz):
@@ -1225,7 +1193,7 @@ def create_bar_plot_with_sd(data_proviz):
         source=source_bar,
         color='Color',  # Reference the 'Color' column in the data source
         legend_label="Frustration Metric",
-        line_color="#ffffff"  # Light border for visibility
+        line_color="black"
     )
 
     # Add error bars using Whisker
@@ -1343,114 +1311,6 @@ main_layout = column(
     sizing_mode='stretch_width'
 )
 
-###############################################################################
-# 8) Applying the Dark Theme
-###############################################################################
-
-# Define the dark theme as a Python dictionary
-dark_theme = Theme(json={
-    "attrs": {
-        "Figure": {
-            "background_fill_color": "#2e2e2e",
-            "border_fill_color": "#2e2e2e",
-            "outline_line_color": "#555555",
-            "toolbar_location": "above",
-            "title_text_color": "#ffffff",
-            "title_text_font_size": "16px",
-            "title_standoff": 12,
-            "title_location": "above",
-            "xaxis": {
-                "axis_line_color": "#ffffff",
-                "major_label_text_color": "#ffffff",
-                "axis_label_text_color": "#ffffff",
-                "major_tick_line_color": "#ffffff",
-                "minor_tick_line_color": "#ffffff",
-                "major_label_text_font_size": "12px",
-                "axis_label_text_font_size": "14px",
-            },
-            "yaxis": {
-                "axis_line_color": "#ffffff",
-                "major_label_text_color": "#ffffff",
-                "axis_label_text_color": "#ffffff",
-                "major_tick_line_color": "#ffffff",
-                "minor_tick_line_color": "#ffffff",
-                "major_label_text_font_size": "12px",
-                "axis_label_text_font_size": "14px",
-            },
-            "legend": {
-                "label_text_color": "#ffffff",
-                "background_fill_color": "#2e2e2e",
-                "border_line_color": "#555555",
-                "title_text_color": "#ffffff",
-            }
-        },
-        "Grid": {
-            "grid_line_color": "#555555"
-        },
-        "DataTable": {
-            "header": {
-                "background_fill_color": "#555555",
-                "text_color": "#ffffff",
-                "font_size": "12px"
-            },
-            "body": {
-                "background_fill_color": "#3c3c3c",
-                "text_color": "#ffffff",
-                "font_size": "12px"
-            },
-            "scroll": {
-                "bar_color": "#555555",
-                "bar_width": 8
-            }
-        },
-        "Slider": {
-            "background_fill_color": "#2e2e2e",
-            "major_tick_line_color": "#ffffff",
-            "minor_tick_line_color": "#ffffff",
-            "title_text_color": "#ffffff",
-            "major_label_text_color": "#ffffff",
-            "foreground_fill_color": "#555555",
-            "bar_color": "#555555",
-            "active_fill_color": "#ffffff"
-        },
-        "Select": {
-            "background_fill_color": "#444444",
-            "foreground_fill_color": "#555555",
-            "selection_fill_color": "#555555",
-            "background_fill_alpha": 1.0,
-            "foreground_fill_alpha": 1.0,
-            "text_color": "#ffffff",
-            "option_text_color": "#ffffff",
-            "button_background_fill_color": "#555555",
-            "button_foreground_fill_color": "#ffffff",
-            "title_text_color": "#ffffff"
-        },
-        "CheckboxGroup": {
-            "background_fill_color": "#3c3c3c",
-            "foreground_fill_color": "#ffffff",
-            "checkbox_group.background_fill_color": "#3c3c3c",
-            "checkbox_group.label_text_color": "#ffffff",
-            "labels": {
-                "background_fill_color": "#3c3c3c",
-                "text_color": "#ffffff"
-            }
-        },
-        "HoverTool": {
-            "tooltips": {
-                "background_fill_color": "#333333",
-                "border_fill_color": "#555555",
-                "color": "#ffffff"
-            },
-            "line_policy": "next"
-        }
-    }
-})
-
-# Apply the theme to the current document
-curdoc().theme = dark_theme
-
-###############################################################################
-# 9) Set up document
-###############################################################################
+# Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
