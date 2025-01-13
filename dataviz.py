@@ -117,7 +117,7 @@ def remove_regression_renderers(fig):
     """
     fig.renderers = [
         r for r in fig.renderers 
-        if not (hasattr(r, 'name') and r.name.startswith('regression_'))
+        if not getattr(r, 'name', '').startswith('regression_')
     ]
 
 ###############################################################################
