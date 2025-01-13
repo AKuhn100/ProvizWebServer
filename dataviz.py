@@ -13,7 +13,6 @@ from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
 
-
 ###############################################################################
 # 1) Configuration
 ###############################################################################
@@ -112,6 +111,14 @@ def parse_summary_file(local_path):
 
     return df_original, df_for_plot, corrs
 
+def remove_regression_renderers(fig):
+    """
+    Removes all renderers from the given figure whose names start with 'regression_'.
+    """
+    fig.renderers = [
+        r for r in fig.renderers 
+        if not (hasattr(r, 'name') and r.name.startswith('regression_'))
+    ]
 
 ###############################################################################
 # 3) Load and Aggregate Data from Local Directory
@@ -379,8 +386,11 @@ p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][
 p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7)
 p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7)
 
-def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None):
-    """Adds a linear regression line and updates the regression info Div."""
+def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
+    """
+    Adds a linear regression line and updates the regression info Div.
+    The plot_type parameter helps in uniquely naming the regression renderers.
+    """
     if len(xvals) < 2 or np.all(xvals == xvals[0]):
         if info_div:
             info_div.text = "Insufficient data for regression"
@@ -405,7 +415,8 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     # Plot regression line visibly
     x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
     y_range = slope * x_range + intercept
-    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name='regression_line')
+    regression_line_name = f'regression_line_{plot_type}'
+    fig.line(x_range, y_range, line_width=2, line_dash='dashed', color=color, name=regression_line_name)
 
     # Create a separate data source for regression line hover
     regression_source = ColumnDataSource(data=dict(
@@ -415,7 +426,14 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
     ))
 
     # Plot regression line again with this data source, invisible (for hover)
-    invisible_regression = fig.line('x', 'y', source=regression_source, line_width=10, alpha=0, name='regression_hover')  # Increased line_width for better hover area
+    invisible_regression_name = f'regression_hover_{plot_type}'
+    invisible_regression = fig.line(
+        'x', 'y', 
+        source=regression_source, 
+        line_width=10, 
+        alpha=0, 
+        name=invisible_regression_name  # Unique name
+    )
 
     # Add a separate HoverTool for the regression line
     hover_regression = HoverTool(
@@ -529,10 +547,10 @@ def update_plot(attr, old, new):
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
 
-    # For each scatter figure, remove old regression lines by filtering out renderers named 'regression_hover'
-    p_scatter_exp.renderers = [r for r in p_scatter_exp.renderers if getattr(r, 'name', '') != 'regression_hover']
-    p_scatter_af.renderers = [r for r in p_scatter_af.renderers if getattr(r, 'name', '') != 'regression_hover']
-    p_scatter_evol.renderers = [r for r in p_scatter_evol.renderers if getattr(r, 'name', '') != 'regression_hover']
+    # **Remove all existing regression renderers**
+    remove_regression_renderers(p_scatter_exp)
+    remove_regression_renderers(p_scatter_af)
+    remove_regression_renderers(p_scatter_evol)
 
     # Reset data sources
     source_scatter_exp.data = dict(x=[], y=[])
@@ -553,21 +571,42 @@ def update_plot(attr, old, new):
         y_exp = sub_orig["ExpFrust"].values
         source_scatter_exp.data = dict(x=x_exp, y=y_exp)
         p_scatter_exp.title.text = f"{filename} Experimental Frustration"
-        add_regression_line_and_info(p_scatter_exp, x_exp, y_exp, color=Category10[10][1], info_div=regression_info_exp)
+        add_regression_line_and_info(
+            fig=p_scatter_exp, 
+            xvals=x_exp, 
+            yvals=y_exp, 
+            color=Category10[10][1], 
+            info_div=regression_info_exp,
+            plot_type="exp"
+        )
 
         # AFFrust
         x_af = sub_orig["B_Factor"].values
         y_af = sub_orig["AFFrust"].values
         source_scatter_af.data = dict(x=x_af, y=y_af)
         p_scatter_af.title.text = f"{filename} AF Frustration"
-        add_regression_line_and_info(p_scatter_af, x_af, y_af, color=Category10[10][2], info_div=regression_info_af)
+        add_regression_line_and_info(
+            fig=p_scatter_af, 
+            xvals=x_af, 
+            yvals=y_af, 
+            color=Category10[10][2], 
+            info_div=regression_info_af,
+            plot_type="af"
+        )
 
         # EvolFrust
         x_evol = sub_orig["B_Factor"].values
         y_evol = sub_orig["EvolFrust"].values
         source_scatter_evol.data = dict(x=x_evol, y=y_evol)
         p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
-        add_regression_line_and_info(p_scatter_evol, x_evol, y_evol, color=Category10[10][3], info_div=regression_info_evol)
+        add_regression_line_and_info(
+            fig=p_scatter_evol, 
+            xvals=x_evol, 
+            yvals=y_evol, 
+            color=Category10[10][3], 
+            info_div=regression_info_evol,
+            plot_type="evol"
+        )
 
 select_file.on_change("value", update_plot)
 if initial_file:
@@ -723,7 +762,7 @@ for frust in frust_types:
             source=regression_source, 
             color=color_map_frust[frust], 
             line_dash='dashed',
-            name=f'regression_line_{frust}'
+            name=f'regression_line_{frust}'  # Unique name based on frust type
         )
 
         hover_regression = HoverTool(
@@ -796,7 +835,7 @@ for frust in frust_types:
             source=regression_source, 
             color=color_map_frust[frust], 
             line_dash='dashed',
-            name=f'regression_line_{frust}'
+            name=f'regression_line_{frust}'  # Unique name based on frust type
         )
 
         hover_regression = HoverTool(
@@ -858,8 +897,8 @@ hover_corr = HoverTool(
 )
 p_corr.add_tools(hover_corr)
 
-# # Add horizontal line at y=0
-# p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
+# Add horizontal line at y=0
+p_corr.line(x=[-0.5, len(data_proviz['Protein']) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray', name='y_zero_line')
 
 # Add scatter glyphs
 for frust in frust_types_corr:
@@ -894,7 +933,7 @@ for frust in frust_types_corr:
         source=mean_source,
         color=color_map_corr[frust],
         line_dash='dashed',
-        name=f'mean_line_{frust}'
+        name=f'mean_line_{frust}'  # Unique name based on frust type
     )
 
     # Add hover tool for mean line
