@@ -26,7 +26,6 @@ FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove as needed
 # Default file to visualize on startup
 DEFAULT_FILE = "summary_test001.txt"  # Change to your preferred default or set to ""
 
-
 ###############################################################################
 # 2) Helpers: Data Parsing and Aggregation
 ###############################################################################
@@ -226,7 +225,6 @@ data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_
 data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
 data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 
-
 ###############################################################################
 # 4) Bokeh Application Components
 ###############################################################################
@@ -312,8 +310,8 @@ p_scatter_exp = figure(
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_axis_label="Normalized B-Factor",
+    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
@@ -324,8 +322,8 @@ p_scatter_af = figure(
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_axis_label="Normalized B-Factor",
+    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
@@ -336,16 +334,17 @@ p_scatter_evol = figure(
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_axis_label="Normalized B-Factor",
+    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
     active_scroll=None  # Disable wheel zoom by default
 )
 
-source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[]))
-source_scatter_af = ColumnDataSource(data=dict(x=[], y=[]))
-source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[]))
+# ColumnDataSources will now include normalized data
+source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
+source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
+source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
 
 # Create Div elements for regression info
 regression_info_exp = Div(
@@ -499,6 +498,18 @@ def update_moving_average(attr, old, new):
 
 window_slider.on_change('value', update_moving_average)
 
+def min_max_normalize(arr):
+    """
+    Applies min-max normalization to a numpy array.
+    Returns an array normalized to [0, 1]. Handles division by zero.
+    """
+    arr_min = np.nanmin(arr)
+    arr_max = np.nanmax(arr)
+    if arr_max > arr_min:
+        return (arr - arr_min) / (arr_max - arr_min)
+    else:
+        return np.zeros_like(arr)  # If all values are the same, return zeros
+
 def update_plot(attr, old, new):
     """
     Updates both the main plot and scatter plots when a new file is selected.
@@ -506,9 +517,9 @@ def update_plot(attr, old, new):
     filename = select_file.value
     if filename not in data_by_file:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        source_scatter_exp.data = dict(x=[], y=[])
-        source_scatter_af.data = dict(x=[], y=[])
-        source_scatter_evol.data = dict(x=[], y=[])
+        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
         p.title.text = "(No Data)"
         p_scatter_exp.title.text = ""
         p_scatter_af.title.text = ""
@@ -567,9 +578,9 @@ def update_plot(attr, old, new):
     remove_regression_renderers(p_scatter_evol)
 
     # Reset data sources
-    source_scatter_exp.data = dict(x=[], y=[])
-    source_scatter_af.data = dict(x=[], y=[])
-    source_scatter_evol.data = dict(x=[], y=[])
+    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
 
     regression_info_exp.text = ""
     regression_info_af.text = ""
@@ -581,42 +592,48 @@ def update_plot(attr, old, new):
         p_scatter_evol.title.text = f"{filename} (No Data)"
     else:
         # ExpFrust
-        x_exp = sub_orig["B_Factor"].values
-        y_exp = sub_orig["ExpFrust"].values
-        source_scatter_exp.data = dict(x=x_exp, y=y_exp)
+        x_exp_orig = sub_orig["B_Factor"].values
+        y_exp_orig = sub_orig["ExpFrust"].values
+        x_exp_norm = min_max_normalize(x_exp_orig)
+        y_exp_norm = min_max_normalize(y_exp_orig)
+        source_scatter_exp.data = dict(x=x_exp_norm, y=y_exp_norm, x_orig=x_exp_orig, y_orig=y_exp_orig)
         p_scatter_exp.title.text = f"{filename} Experimental Frustration"
         add_regression_line_and_info(
             fig=p_scatter_exp, 
-            xvals=x_exp, 
-            yvals=y_exp, 
+            xvals=x_exp_norm,  # Use normalized data
+            yvals=y_exp_norm, 
             color=Category10[10][1], 
             info_div=regression_info_exp,
             plot_type="exp"
         )
 
         # AFFrust
-        x_af = sub_orig["B_Factor"].values
-        y_af = sub_orig["AFFrust"].values
-        source_scatter_af.data = dict(x=x_af, y=y_af)
+        x_af_orig = sub_orig["B_Factor"].values
+        y_af_orig = sub_orig["AFFrust"].values
+        x_af_norm = min_max_normalize(x_af_orig)
+        y_af_norm = min_max_normalize(y_af_orig)
+        source_scatter_af.data = dict(x=x_af_norm, y=y_af_norm, x_orig=x_af_orig, y_orig=y_af_orig)
         p_scatter_af.title.text = f"{filename} AF Frustration"
         add_regression_line_and_info(
             fig=p_scatter_af, 
-            xvals=x_af, 
-            yvals=y_af, 
+            xvals=x_af_norm, 
+            yvals=y_af_norm, 
             color=Category10[10][2], 
             info_div=regression_info_af,
             plot_type="af"
         )
 
         # EvolFrust
-        x_evol = sub_orig["B_Factor"].values
-        y_evol = sub_orig["EvolFrust"].values
-        source_scatter_evol.data = dict(x=x_evol, y=y_evol)
+        x_evol_orig = sub_orig["B_Factor"].values
+        y_evol_orig = sub_orig["EvolFrust"].values
+        x_evol_norm = min_max_normalize(x_evol_orig)
+        y_evol_norm = min_max_normalize(y_evol_orig)
+        source_scatter_evol.data = dict(x=x_evol_norm, y=y_evol_norm, x_orig=x_evol_orig, y_orig=y_evol_orig)
         p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
         add_regression_line_and_info(
             fig=p_scatter_evol, 
-            xvals=x_evol, 
-            yvals=y_evol, 
+            xvals=x_evol_norm, 
+            yvals=y_evol_norm, 
             color=Category10[10][3], 
             info_div=regression_info_evol,
             plot_type="evol"
@@ -1048,7 +1065,6 @@ p_corr_plot.legend.click_policy = "mute"
 # Rotate x-axis labels to prevent overlapping
 from math import pi
 p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
-
 
 ###############################################################################
 # 7) User Interface Components
