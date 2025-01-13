@@ -114,11 +114,19 @@ def parse_summary_file(local_path):
 def remove_regression_renderers(fig):
     """
     Removes all renderers from the given figure whose names start with 'regression_'.
+    Safely handles cases where the renderer or its name might be None.
     """
-    fig.renderers = [
-        r for r in fig.renderers 
-        if not getattr(r, 'name', '').startswith('regression_')
-    ]
+    new_renderers = []
+    for r in fig.renderers:
+        # Check if the renderer is not None
+        if r is not None:
+            # Safely get the name attribute; default to empty string if not present
+            name = getattr(r, 'name', '')
+            # Ensure name is a string before calling startswith
+            if isinstance(name, str) and name.startswith('regression_'):
+                continue  # Skip renderers related to regression
+        new_renderers.append(r)  # Retain all other renderers
+    fig.renderers = new_renderers
 
 ###############################################################################
 # 3) Load and Aggregate Data from Local Directory
