@@ -790,6 +790,11 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
     checkbox.on_change('active', update_corr_filter)
 
 ###############################################################################
+# 5) CORRELATION TABLE AND FILTERS (Continued)
+###############################################################################
+# This section remains unchanged as it's already integrated above.
+
+###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
 ###############################################################################
 
@@ -962,9 +967,9 @@ p_std_plot.legend.title = "Frustration Type"
 p_std_plot.legend.click_policy = "mute"
 
 # (H) Spearman Rho per Protein and Frustration Metric
-# Melt data_proviz for the third plot
+# Melt data_proviz for the third plot, including Spearman_Diff
 data_long_corr = data_proviz.melt(
-    id_vars=['Protein'],
+    id_vars=['Protein', 'Spearman_Diff'],  # Include Spearman_Diff
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
     var_name='Frust_Type',
     value_name='Spearman_Rho'
@@ -1003,12 +1008,13 @@ frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
 palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
 color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
 
-# Add HoverTool
+# Add HoverTool with Spearman_Diff
 hover_corr = HoverTool(
     tooltips=[
         ("Protein", "@Protein"),
         ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ("Spearman Rho", "@Spearman_Rho{0.3f}"),
+        ("Spearman Diff", "@Spearman_Diff{0.3f}")  # Added line
     ],
     mode='mouse'
 )
@@ -1083,43 +1089,556 @@ p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 # 5) CORRELATION TABLE AND FILTERS
 ###############################################################################
 
-# ... [Existing code remains unchanged]
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+# (E) FILTERS for correlation table
+
+# Define helper function to split labels into columns
+def split_labels(labels, num_columns):
+    """
+    Splits a list of labels into a list of lists, each sublist containing labels for one column.
+    """
+    if num_columns <= 0:
+        return [labels]
+    k, m = divmod(len(labels), num_columns)
+    return [labels[i*k + min(i, m):(i+1)*k + min(i+1, m)] for i in range(num_columns)]
+
+# Define the number of columns for better layout
+NUM_COLUMNS = 3
+
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+if not df_all_corr.empty:
+    # Split labels into columns
+    test_labels_split = split_labels(tests_in_corr, NUM_COLUMNS)
+    combo_labels_split = split_labels(combo_options, NUM_COLUMNS)
+    
+    # Create CheckboxGroups for Tests
+    checkbox_tests_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],  # Initially no selection
+            name=f'tests_column_{i+1}'
+        ) for i, col_labels in enumerate(test_labels_split)
+    ]
+    
+    # Create CheckboxGroups for Metric Pairs
+    checkbox_combos_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],  # Initially no selection
+            name=f'combos_column_{i+1}'
+        ) for i, col_labels in enumerate(combo_labels_split)
+    ]
+else:
+    checkbox_tests_columns = [CheckboxGroup(labels=[], active=[], name='tests_column_1')]
+    checkbox_combos_columns = [CheckboxGroup(labels=[], active=[], name='combos_column_1')]
+
+# Create Columns for Tests and Metric Pairs
+tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width', width=300)
+combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width', width=300)
+
+# Add Titles Above Each CheckboxGroup
+tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+
+# Combine Titles and CheckboxGroups into Columns
+tests_column = column(tests_title, tests_layout, sizing_mode='stretch_width')
+combos_column = column(combos_title, combos_layout, sizing_mode='stretch_width')
+
+# Arrange Tests and Combos Side by Side with Spacer
+controls_layout = row(
+    tests_column,
+    Spacer(width=50),
+    combos_column,
+    sizing_mode='stretch_width'
+)
+
+# Define helper function to get selected labels from multiple CheckboxGroups
+def get_selected_labels(checkbox_columns):
+    """
+    Aggregates selected labels from multiple CheckboxGroup widgets.
+    """
+    selected = []
+    for checkbox in checkbox_columns:
+        selected.extend([checkbox.labels[i] for i in checkbox.active])
+    return selected
+
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    
+    # Aggregate selected tests and metric pairs from all CheckboxGroups
+    selected_tests = get_selected_labels(checkbox_tests_columns)
+    selected_combos = get_selected_labels(checkbox_combos_columns)
+
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = df_all_corr
+
+    source_corr.data = filtered.to_dict(orient="list")
+
+# Attach callbacks to all CheckboxGroups
+for checkbox in checkbox_tests_columns + checkbox_combos_columns:
+    checkbox.on_change('active', update_corr_filter)
 
 ###############################################################################
-# 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
+# 7) CORRELATION TABLE AND FILTERS (Continued)
+###############################################################################
+# This section remains unchanged as it's already integrated above.
+
+###############################################################################
+# 8) Additional Aggregated Plots (Converted from Plotly to Bokeh)
 ###############################################################################
 
 # (F) Spearman Rho vs Average B-Factor
-# ... [Existing code for p_avg_plot remains unchanged]
+source_avg_plot = ColumnDataSource(data_long_avg)
+
+p_avg_plot = figure(
+    title="Spearman Correlation vs Average B-Factor",
+    x_axis_label="Average B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    sizing_mode='stretch_width',
+    height=400,
+    tools="pan,wheel_zoom,box_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+# Define color palette for Frustration Types
+frust_types_avg = data_long_avg['Frust_Type'].unique().tolist()
+palette_avg = Category10[max(3, len(frust_types_avg))]  # Ensure enough colors
+color_map_frust_avg = {frust: palette_avg[i] for i, frust in enumerate(frust_types_avg)}
+
+# Create a list to hold scatter renderers
+scatter_renderers_avg = []
+
+# Add scatter glyphs with named renderers and collect renderers
+for frust in frust_types_avg:
+    subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
+    scatter = p_avg_plot.scatter(
+        'Avg_B_Factor', 'Spearman_Rho',
+        source=source_subset,
+        color=color_map_frust_avg[frust],
+        size=8,
+        alpha=0.6,
+        legend_label=frust,
+        muted_alpha=0.1,
+        name=f'scatter_{frust}'  # Add name to the renderer
+    )
+    scatter_renderers_avg.append(scatter)
+
+    # Add regression lines with hover
+    if len(subset) >= 2:
+        slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
+        x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
+        y_range = slope * x_range + intercept
+
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+
+        regression_line = p_avg_plot.line(
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust_avg[frust], 
+            line_dash='dashed',
+            name=f'regression_line_{frust}'  # Unique name based on frust type
+        )
+
+        # Add HoverTool only to the regression_line
+        hover_regression = HoverTool(
+            renderers=[regression_line],
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
+        )
+        p_avg_plot.add_tools(hover_regression)
+
+# Create and add the standard HoverTool only for the scatter renderers
+hover_scatter_avg = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    renderers=scatter_renderers_avg,  # Only attach to scatter renderers
+    mode='mouse'
+)
+p_avg_plot.add_tools(hover_scatter_avg)
+
+p_avg_plot.legend.location = "top_left"
+p_avg_plot.legend.title = "Frustration Type"
+p_avg_plot.legend.click_policy = "mute"
 
 # (G) Spearman Rho vs Std Dev of B-Factor
-# ... [Existing code for p_std_plot remains unchanged]
+source_std_plot = ColumnDataSource(data_long_std)
+
+p_std_plot = figure(
+    title="Spearman Correlation vs Std Dev of B-Factor",
+    x_axis_label="Standard Deviation of B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    sizing_mode='stretch_width',
+    height=400,
+    tools="pan,wheel_zoom,box_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+# Define color palette for Frustration Types
+frust_types_std = data_long_std['Frust_Type'].unique().tolist()
+palette_std = Category10[max(3, len(frust_types_std))]  # Ensure enough colors
+color_map_frust_std = {frust: palette_std[i] for i, frust in enumerate(frust_types_std)}
+
+# Create a list to hold scatter renderers
+scatter_renderers_std = []
+
+# Add scatter glyphs with named renderers and collect renderers
+for frust in frust_types_std:
+    subset = data_long_std[data_long_std['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
+    scatter = p_std_plot.scatter(
+        'Std_B_Factor', 'Spearman_Rho',
+        source=source_subset,
+        color=color_map_frust_std[frust],
+        size=8,
+        alpha=0.6,
+        legend_label=frust,
+        muted_alpha=0.1,
+        name=f'scatter_{frust}'  # Add name to the renderer
+    )
+    scatter_renderers_std.append(scatter)
+
+    # Add regression lines with hover
+    if len(subset) >= 2:
+        slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
+        x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
+        y_range = slope * x_range + intercept
+
+        regression_source = ColumnDataSource(data=dict(
+            x=x_range,
+            y=y_range,
+            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        ))
+
+        regression_line = p_std_plot.line(
+            'x', 'y', 
+            source=regression_source, 
+            color=color_map_frust_std[frust], 
+            line_dash='dashed',
+            name=f'regression_line_{frust}'  # Unique name based on frust type
+        )
+
+        # Add HoverTool only to the regression_line
+        hover_regression = HoverTool(
+            renderers=[regression_line],
+            tooltips=[
+                ("Regression Equation", "@equation")
+            ],
+            mode='mouse'
+        )
+        p_std_plot.add_tools(hover_regression)
+
+# Create and add the standard HoverTool only for the scatter renderers
+hover_scatter_std = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    renderers=scatter_renderers_std,  # Only attach to scatter renderers
+    mode='mouse'
+)
+p_std_plot.add_tools(hover_scatter_std)
+
+p_std_plot.legend.location = "top_left"
+p_std_plot.legend.title = "Frustration Type"
+p_std_plot.legend.click_policy = "mute"
 
 # (H) Spearman Rho per Protein and Frustration Metric
-# ... [Updated code for p_corr_plot as above]
-
-# (I) Main layout with slider and additional plots
-visualization_section = column(
-    select_file,
-    window_slider,
-    p,
-    scatter_row,
-    unity_container,
-    additional_plots,  # Integrated Additional Plots
-    sizing_mode='stretch_width',
-    css_classes=['visualization-section']
+# Melt data_proviz for the third plot, including Spearman_Diff
+data_long_corr = data_proviz.melt(
+    id_vars=['Protein', 'Spearman_Diff'],  # Include Spearman_Diff
+    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
+    var_name='Frust_Type',
+    value_name='Spearman_Rho'
 )
 
-# Main layout assembly
-main_layout = column(
-    custom_styles,
-    header,
-    visualization_section,
-    controls_section,
-    controls_layout,  # Updated controls layout with CheckboxGroups
-    data_table,
+# Clean Frust_Type names
+data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+
+# Remove rows with NaN correlations
+data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
+
+# Sort data_long_corr based on the order in data_proviz
+data_long_corr['Protein'] = pd.Categorical(
+    data_long_corr['Protein'],
+    categories=data_proviz['Protein'].tolist(),  # Ordered list
+    ordered=True
+)
+
+source_corr_plot = ColumnDataSource(data_long_corr)
+
+p_corr_plot = figure(
+    title="Spearman Correlation per Protein and Frustration Metric",
+    x_axis_label="Protein",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_range=data_proviz['Protein'].tolist(),  # Ordered list
+    sizing_mode='stretch_width',
+    height=600,
+    tools="pan,wheel_zoom,box_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None,
+    toolbar_location="above"
+)
+
+# Define color palette for Frustration Types
+frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
+palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
+color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
+
+# Add HoverTool with Spearman_Diff
+hover_corr = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Metric", "@Frust_Type"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}"),
+        ("Spearman Diff", "@Spearman_Diff{0.3f}")  # Added line
+    ],
+    mode='mouse'
+)
+p_corr_plot.add_tools(hover_corr)
+
+# Add horizontal line at y=0
+p_corr_plot.line(
+    x=[-0.5, len(data_proviz['Protein']) - 0.5], 
+    y=[0, 0], 
+    line_width=1, 
+    line_dash='dashed', 
+    color='gray', 
+    name='y_zero_line'
+)
+
+# Add scatter glyphs
+for frust in frust_types_corr:
+    subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
+    source_subset = ColumnDataSource(subset)
+    p_corr_plot.scatter(
+        'Protein', 'Spearman_Rho',
+        source=source_subset,
+        color=color_map_corr[frust],
+        size=8,
+        alpha=0.6,
+        legend_label=frust,
+        muted_alpha=0.1
+    )
+
+# Add mean lines for each frustration type
+for frust in frust_types_corr:
+    subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
+    mean_value = subset['Spearman_Rho'].mean()
+
+    # Create source for the mean line with hover information
+    mean_source = ColumnDataSource(data=dict(
+        x=[-0.5, len(data_proviz['Protein']) - 0.5],
+        y=[mean_value, mean_value],
+        mean_value=[f"{mean_value:.3f}"] * 2,
+        frust_type=[frust] * 2
+    ))
+
+    # Add mean line with hover
+    mean_line = p_corr_plot.line(
+        'x', 'y',
+        source=mean_source,
+        color=color_map_corr[frust],
+        line_dash='dashed',
+        name=f'mean_line_{frust}'  # Unique name based on frust type
+    )
+
+    # Add hover tool for mean line
+    mean_hover = HoverTool(
+        renderers=[mean_line],
+        tooltips=[
+            ("Frustration Type", "@frust_type"),
+            ("Mean Correlation", "@mean_value")
+        ],
+        mode='mouse'
+    )
+    p_corr_plot.add_tools(mean_hover)
+
+p_corr_plot.legend.location = "top_left"
+p_corr_plot.legend.title = "Frustration Type"
+p_corr_plot.legend.click_policy = "mute"
+
+# Rotate x-axis labels to prevent overlapping
+from math import pi
+p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+
+###############################################################################
+# 5) CORRELATION TABLE AND FILTERS
+###############################################################################
+
+# (D) CORRELATION TABLE
+if df_all_corr.empty:
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Rho"),
+        TableColumn(field="Pval", title="p-value")
+    ]
+    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+else:
+    source_corr = ColumnDataSource(df_all_corr)
+    columns = [
+        TableColumn(field="Test", title="Test"),
+        TableColumn(field="MetricA", title="MetricA"),
+        TableColumn(field="MetricB", title="MetricB"),
+        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
+        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
+    ]
+    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+# (E) FILTERS for correlation table
+
+# Define helper function to split labels into columns
+def split_labels(labels, num_columns):
+    """
+    Splits a list of labels into a list of lists, each sublist containing labels for one column.
+    """
+    if num_columns <= 0:
+        return [labels]
+    k, m = divmod(len(labels), num_columns)
+    return [labels[i*k + min(i, m):(i+1)*k + min(i+1, m)] for i in range(num_columns)]
+
+# Define the number of columns for better layout
+NUM_COLUMNS = 3
+
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+if not df_all_corr.empty:
+    # Split labels into columns
+    test_labels_split = split_labels(tests_in_corr, NUM_COLUMNS)
+    combo_labels_split = split_labels(combo_options, NUM_COLUMNS)
+    
+    # Create CheckboxGroups for Tests
+    checkbox_tests_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],  # Initially no selection
+            name=f'tests_column_{i+1}'
+        ) for i, col_labels in enumerate(test_labels_split)
+    ]
+    
+    # Create CheckboxGroups for Metric Pairs
+    checkbox_combos_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],  # Initially no selection
+            name=f'combos_column_{i+1}'
+        ) for i, col_labels in enumerate(combo_labels_split)
+    ]
+else:
+    checkbox_tests_columns = [CheckboxGroup(labels=[], active=[], name='tests_column_1')]
+    checkbox_combos_columns = [CheckboxGroup(labels=[], active=[], name='combos_column_1')]
+
+# Create Columns for Tests and Metric Pairs
+tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width', width=300)
+combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width', width=300)
+
+# Add Titles Above Each CheckboxGroup
+tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+
+# Combine Titles and CheckboxGroups into Columns
+tests_column = column(tests_title, tests_layout, sizing_mode='stretch_width')
+combos_column = column(combos_title, combos_layout, sizing_mode='stretch_width')
+
+# Arrange Tests and Combos Side by Side with Spacer
+controls_layout = row(
+    tests_column,
+    Spacer(width=50),
+    combos_column,
     sizing_mode='stretch_width'
 )
-# Set up document
-curdoc().add_root(main_layout)
-curdoc().title = "Evolutionary Frustration"
+
+# Define helper function to get selected labels from multiple CheckboxGroups
+def get_selected_labels(checkbox_columns):
+    """
+    Aggregates selected labels from multiple CheckboxGroup widgets.
+    """
+    selected = []
+    for checkbox in checkbox_columns:
+        selected.extend([checkbox.labels[i] for i in checkbox.active])
+    return selected
+
+def update_corr_filter(attr, old, new):
+    """Filter correlation table based on selected tests and metric pairs."""
+    if df_all_corr.empty:
+        return
+    
+    # Aggregate selected tests and metric pairs from all CheckboxGroups
+    selected_tests = get_selected_labels(checkbox_tests_columns)
+    selected_combos = get_selected_labels(checkbox_combos_columns)
+
+    if not selected_tests and not selected_combos:
+        filtered = df_all_corr
+    else:
+        df_tmp = df_all_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+
+        if selected_tests and selected_com
