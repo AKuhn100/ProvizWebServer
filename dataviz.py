@@ -202,10 +202,6 @@ data_proviz = pd.DataFrame({
     'Spearman_EvolFrust': spearman_evol
 })
 
-# ---------------------- Integrated Changes Start Here ----------------------
-
-# Add this to the file parsing section after loading data_proviz
-
 # Process heatmap summary for false contacts
 heatmap_file = os.path.join(DATA_DIR, 'heatmap_summary.csv')
 if os.path.exists(heatmap_file):
@@ -229,120 +225,7 @@ if os.path.exists(heatmap_file):
     except Exception as e:
         print(f"Error processing heatmap_summary.csv: {e}")
 
-# Create false contacts plot
-p_false_contacts = figure(
-    title="Spearman Correlation vs. Weighted Percentage of False Contacts",
-    x_axis_label="Weighted Percentage of False Contacts",
-    y_axis_label="Spearman Correlation",
-    sizing_mode='stretch_width',
-    height=400,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None
-)
-
-# Prepare data for plotting
-if 'Weighted_Percentage_False_Contacts' in data_proviz.columns:
-    plot_data = pd.DataFrame()
-    
-    # Add individual metrics
-    metrics_data = pd.DataFrame({
-        'Protein': data_proviz['Protein'],
-        'Weighted_Percentage_False_Contacts': data_proviz['Weighted_Percentage_False_Contacts'],
-        'Spearman_Rho': data_proviz['Spearman_EvolFrust'],
-        'Frust_Type': 'EvolFrust.'
-    })
-    plot_data = pd.concat([plot_data, metrics_data])
-    
-    metrics_data['Spearman_Rho'] = data_proviz['Spearman_ExpFrust']
-    metrics_data['Frust_Type'] = 'ExpFrust.'
-    plot_data = pd.concat([plot_data, metrics_data])
-    
-    # Add difference
-    diff_data = pd.DataFrame({
-        'Protein': data_proviz['Protein'],
-        'Weighted_Percentage_False_Contacts': data_proviz['Weighted_Percentage_False_Contacts'],
-        'Spearman_Rho': data_proviz['Spearman_EvolFrust'] - data_proviz['Spearman_ExpFrust'],
-        'Frust_Type': 'EvolFrust-ExpFrust'
-    })
-    plot_data = pd.concat([plot_data, diff_data])
-    
-    # Create source
-    source_false_contacts = ColumnDataSource(plot_data)
-    
-    # Add scatter points for each type
-    for frust_type in plot_data['Frust_Type'].unique():
-        color = FRUSTRATION_COLORS.get(frust_type, FRUSTRATION_COLORS['Spearman_Diff'])
-        subset = plot_data[plot_data['Frust_Type'] == frust_type]
-        source_subset = ColumnDataSource(subset)
-        
-        # Scatter points
-        scatter = p_false_contacts.scatter(
-            'Weighted_Percentage_False_Contacts', 'Spearman_Rho',
-            source=source_subset,
-            color=color,
-            size=8,
-            alpha=0.6,
-            legend_label=frust_type,
-        )
-        
-        # Add regression line
-        if len(subset) >= 2:
-            X = subset['Weighted_Percentage_False_Contacts'].values
-            Y = subset['Spearman_Rho'].values
-            valid = ~np.isnan(X) & ~np.isnan(Y)
-            if valid.any():
-                slope, intercept, r_value, p_value, std_err = linregress(X[valid], Y[valid])
-                x_line = np.linspace(X[valid].min(), X[valid].max(), 100)
-                y_line = slope * x_line + intercept
-                
-                line_source = ColumnDataSource({
-                    'x': x_line,
-                    'y': y_line,
-                    'equation': [f'y = {slope:.3f}x + {intercept:.3f}'] * len(x_line)
-                })
-                
-                reg_line = p_false_contacts.line(
-                    'x', 'y',
-                    source=line_source,
-                    line_color=color,
-                    line_dash='dashed',
-                )
-                
-                # Add hover for regression line
-                hover_reg = HoverTool(
-                    renderers=[reg_line],
-                    tooltips=[("Equation", "@equation")],
-                    mode='mouse'
-                )
-                p_false_contacts.add_tools(hover_reg)
-    
-    # Add hover tool for scatter points
-    hover = HoverTool(
-        tooltips=[
-            ("Protein", "@Protein"),
-            ("False Contacts %", "@Weighted_Percentage_False_Contacts{0.2f}"),
-            ("Spearman Rho", "@Spearman_Rho{0.3f}")
-        ],
-        mode='mouse'
-    )
-    p_false_contacts.add_tools(hover)
-    
-    # Configure legend
-    p_false_contacts.legend.location = "top_left"
-    p_false_contacts.legend.click_policy = "mute"
-
-# Add the plot to additional_plots
-additional_plots = column(
-    p_avg_plot,
-    p_std_plot,
-    p_corr_plot,
-    p_false_contacts,  # Add the new plot
-    create_bar_plot_with_sd(data_proviz),
-    sizing_mode='stretch_width',
-    spacing=20,
-    name="additional_plots"
-)
+# ---------------------- Integrated Changes Start Here ----------------------
 
 # Calculate Spearman difference
 data_proviz['Spearman_Diff'] = (
@@ -1248,6 +1131,111 @@ p_corr_plot.legend.click_policy = "mute"
 from math import pi
 p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
+# After p_corr_plot but before create_bar_plot_with_sd
+
+# Create false contacts plot
+p_false_contacts = figure(
+    title="Spearman Correlation vs. Weighted Percentage of False Contacts",
+    x_axis_label="Weighted Percentage of False Contacts",
+    y_axis_label="Spearman Correlation",
+    sizing_mode='stretch_width',
+    height=400,
+    tools="pan,wheel_zoom,box_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+# Prepare data for plotting
+if 'Weighted_Percentage_False_Contacts' in data_proviz.columns:
+    plot_data = pd.DataFrame()
+    
+    # Add individual metrics
+    metrics_data = pd.DataFrame({
+        'Protein': data_proviz['Protein'],
+        'Weighted_Percentage_False_Contacts': data_proviz['Weighted_Percentage_False_Contacts'],
+        'Spearman_Rho': data_proviz['Spearman_EvolFrust'],
+        'Frust_Type': 'EvolFrust.'
+    })
+    plot_data = pd.concat([plot_data, metrics_data])
+    
+    metrics_data['Spearman_Rho'] = data_proviz['Spearman_ExpFrust']
+    metrics_data['Frust_Type'] = 'ExpFrust.'
+    plot_data = pd.concat([plot_data, metrics_data])
+    
+    # Add difference
+    diff_data = pd.DataFrame({
+        'Protein': data_proviz['Protein'],
+        'Weighted_Percentage_False_Contacts': data_proviz['Weighted_Percentage_False_Contacts'],
+        'Spearman_Rho': data_proviz['Spearman_EvolFrust'] - data_proviz['Spearman_ExpFrust'],
+        'Frust_Type': 'EvolFrust-ExpFrust'
+    })
+    plot_data = pd.concat([plot_data, diff_data])
+    
+    # Create source
+    source_false_contacts = ColumnDataSource(plot_data)
+    
+    # Add scatter points for each type
+    for frust_type in plot_data['Frust_Type'].unique():
+        color = FRUSTRATION_COLORS.get(frust_type, FRUSTRATION_COLORS['EvolFrust-ExpFrust'])
+        subset = plot_data[plot_data['Frust_Type'] == frust_type]
+        source_subset = ColumnDataSource(subset)
+        
+        # Scatter points
+        scatter = p_false_contacts.scatter(
+            'Weighted_Percentage_False_Contacts', 'Spearman_Rho',
+            source=source_subset,
+            color=color,
+            size=8,
+            alpha=0.6,
+            legend_label=frust_type,
+        )
+        
+        # Add regression line
+        if len(subset) >= 2:
+            X = subset['Weighted_Percentage_False_Contacts'].values
+            Y = subset['Spearman_Rho'].values
+            valid = ~np.isnan(X) & ~np.isnan(Y)
+            if valid.any():
+                slope, intercept, r_value, p_value, std_err = linregress(X[valid], Y[valid])
+                x_line = np.linspace(X[valid].min(), X[valid].max(), 100)
+                y_line = slope * x_line + intercept
+                
+                line_source = ColumnDataSource({
+                    'x': x_line,
+                    'y': y_line,
+                    'equation': [f'y = {slope:.3f}x + {intercept:.3f}'] * len(x_line)
+                })
+                
+                reg_line = p_false_contacts.line(
+                    'x', 'y',
+                    source=line_source,
+                    line_color=color,
+                    line_dash='dashed',
+                )
+                
+                # Add hover for regression line
+                hover_reg = HoverTool(
+                    renderers=[reg_line],
+                    tooltips=[("Equation", "@equation")],
+                    mode='mouse'
+                )
+                p_false_contacts.add_tools(hover_reg)
+    
+    # Add hover tool for scatter points
+    hover = HoverTool(
+        tooltips=[
+            ("Protein", "@Protein"),
+            ("False Contacts %", "@Weighted_Percentage_False_Contacts{0.2f}"),
+            ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ],
+        mode='mouse'
+    )
+    p_false_contacts.add_tools(hover)
+    
+    # Configure legend
+    p_false_contacts.legend.location = "top_left"
+    p_false_contacts.legend.click_policy = "mute"
+
 ###############################################################################
 # 7) User Interface Components
 ###############################################################################
@@ -1513,6 +1501,18 @@ main_layout = column(
     controls_layout,  # Updated controls layout with CheckboxGroups
     data_table,
     sizing_mode='stretch_width'
+)
+
+# Update the additional_plots layout
+additional_plots = column(
+    p_avg_plot,
+    p_std_plot,
+    p_corr_plot,
+    p_false_contacts,  # Add the new plot
+    create_bar_plot_with_sd(data_proviz),
+    sizing_mode='stretch_width',
+    spacing=20,
+    name="additional_plots"
 )
 # Set up document
 curdoc().add_root(main_layout)
