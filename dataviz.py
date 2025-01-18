@@ -506,7 +506,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         ],
         mode='mouse'
     )
-    fig.add_tools(hover_regression)
+    # fig.add_tools(hover_regression)
 
     # Update regression info div with equation
     if info_div:
