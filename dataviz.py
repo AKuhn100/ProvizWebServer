@@ -228,7 +228,7 @@ data_long_std = data_proviz.melt(
     value_name='Spearman_Rho'
 )
 
-# Clean Frust_Type names
+# Clean Frust_Type names for avg and std
 data_long_avg['Frust_Type'] = data_long_avg['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 
@@ -236,14 +236,36 @@ data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_
 data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
 data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 
-# Add Spearman_Diff to data_long_corr
+# Create data_long_corr with individual metrics
+data_long_corr = data_proviz.melt(
+    id_vars=['Protein'],
+    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
+    var_name='Frust_Type',
+    value_name='Spearman_Rho'
+)
+
+# Clean Frust_Type names for correlation data
+data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+
+# Create and add Spearman_Diff data
 spearman_diff_data = pd.DataFrame({
     'Protein': data_proviz['Protein'],
     'Spearman_Rho': data_proviz['Spearman_Diff'],
     'Frust_Type': 'Spearman_Diff'
 })
 
-data_long_corr = pd.concat([df_all_corr[['Test','MetricA','MetricB','Rho','Pval']].assign(Frust_Type=''), spearman_diff_data], ignore_index=True)
+# Concatenate the individual metrics with the difference data
+data_long_corr = pd.concat([data_long_corr, spearman_diff_data], ignore_index=True)
+
+# Remove rows with NaN correlations
+data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
+
+# Make Protein categorical with ordered categories based on Spearman_Diff
+data_long_corr['Protein'] = pd.Categorical(
+    data_long_corr['Protein'],
+    categories=protein_order,
+    ordered=True
+)
 
 # Update the FRUSTRATION_COLORS dictionary to include Spearman_Diff
 FRUSTRATION_COLORS["Spearman_Diff"] = Category10[10][4]  # Orange color for difference
