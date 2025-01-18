@@ -274,7 +274,7 @@ data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearma
 spearman_diff_data = pd.DataFrame({
     'Protein': data_proviz['Protein'],
     'Spearman_Rho': data_proviz['Spearman_Diff'],
-    'Frust_Type': 'EvolFrust-ExpFrust'
+    'Frust_Type': 'Spearman_Diff'
 })
 
 # Concatenate the individual metrics with the difference data
@@ -1037,7 +1037,7 @@ p_std_plot.legend.click_policy = "mute"
 # Create the correlation plot as per integrated changes
 p_corr_plot = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein (Ordered by EvolFrust-ExpFrust)",
+    x_axis_label="Protein (Ordered by Spearman_Diff)",
     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=protein_order,  # Use ordered protein list
     sizing_mode='stretch_width',
@@ -1167,7 +1167,7 @@ if 'Weighted_Percentage_False_Contacts' in data_proviz.columns:
         'Protein': data_proviz['Protein'],
         'Weighted_Percentage_False_Contacts': data_proviz['Weighted_Percentage_False_Contacts'],
         'Spearman_Rho': data_proviz['Spearman_EvolFrust'] - data_proviz['Spearman_ExpFrust'],
-        'Frust_Type': 'EvolFrust-ExpFrust'
+        'Frust_Type': 'Spearman_Diff'
     })
     plot_data = pd.concat([plot_data, diff_data])
     
@@ -1176,7 +1176,7 @@ if 'Weighted_Percentage_False_Contacts' in data_proviz.columns:
     
     # Add scatter points for each type
     for frust_type in plot_data['Frust_Type'].unique():
-        color = FRUSTRATION_COLORS.get(frust_type, FRUSTRATION_COLORS['EvolFrust-ExpFrust'])
+        color = FRUSTRATION_COLORS.get(frust_type, FRUSTRATION_COLORS['Spearman_Diff'])
         subset = plot_data[plot_data['Frust_Type'] == frust_type]
         source_subset = ColumnDataSource(subset)
         
