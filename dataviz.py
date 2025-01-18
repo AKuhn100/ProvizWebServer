@@ -205,13 +205,13 @@ data_proviz = pd.DataFrame({
 # ---------------------- Integrated Changes Start Here ----------------------
 
 # Calculate Spearman difference
-data_proviz['Spearman_Diff'] = (
+data_proviz['EvolFrust-ExpFrust'] = (
     data_proviz['Spearman_EvolFrust'] - 
     data_proviz['Spearman_ExpFrust']
 )
 
 # Sort protein names based on Spearman difference
-protein_order = data_proviz.sort_values('Spearman_Diff')['Protein'].tolist()
+protein_order = data_proviz.sort_values('EvolFrust-ExpFrust')['Protein'].tolist()
 
 # Update data_long_avg and data_long_std to include ordered Protein categories
 data_long_avg = data_proviz.melt(
@@ -247,28 +247,28 @@ data_long_corr = data_proviz.melt(
 # Clean Frust_Type names for correlation data
 data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 
-# Create and add Spearman_Diff data
-spearman_diff_data = pd.DataFrame({
+# Create and add EvolFrust-ExpFrust data
+EvolFrust-ExpFrust_data = pd.DataFrame({
     'Protein': data_proviz['Protein'],
-    'Spearman_Rho': data_proviz['Spearman_Diff'],
-    'Frust_Type': 'Spearman_Diff'
+    'Spearman_Rho': data_proviz['EvolFrust-ExpFrust'],
+    'Frust_Type': 'EvolFrust-ExpFrust'
 })
 
 # Concatenate the individual metrics with the difference data
-data_long_corr = pd.concat([data_long_corr, spearman_diff_data], ignore_index=True)
+data_long_corr = pd.concat([data_long_corr, EvolFrust-ExpFrust_data], ignore_index=True)
 
 # Remove rows with NaN correlations
 data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
 
-# Make Protein categorical with ordered categories based on Spearman_Diff
+# Make Protein categorical with ordered categories based on EvolFrust-ExpFrust
 data_long_corr['Protein'] = pd.Categorical(
     data_long_corr['Protein'],
     categories=protein_order,
     ordered=True
 )
 
-# Update the FRUSTRATION_COLORS dictionary to include Spearman_Diff
-FRUSTRATION_COLORS["Spearman_Diff"] = Category10[10][4]  # Orange color for difference
+# Update the FRUSTRATION_COLORS dictionary to include EvolFrust-ExpFrust
+FRUSTRATION_COLORS["EvolFrust-ExpFrust"] = Category10[10][4]  # Orange color for difference
 
 # Create ColumnDataSource for the correlation plot
 source_corr_plot = ColumnDataSource(data_long_corr)
@@ -1009,12 +1009,12 @@ p_std_plot.legend.click_policy = "mute"
 
 # (H) Spearman Rho per Protein and Frustration Metric
 # Melt data_proviz for the third plot (Already handled in integrated changes)
-# data_long_corr is already prepared with Spearman_Diff
+# data_long_corr is already prepared with EvolFrust-ExpFrust
 
 # Create the correlation plot as per integrated changes
 p_corr_plot = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein (Ordered by Spearman_Diff)",
+    x_axis_label="Protein (Ordered by EvolFrust-ExpFrust)",
     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=protein_order,  # Use ordered protein list
     sizing_mode='stretch_width',
@@ -1069,7 +1069,7 @@ for frust in frust_types_corr:
 for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     if frust == "":
-        continue  # Skip if Frust_Type is empty (only Spearman_Diff has Frust_Type)
+        continue  # Skip if Frust_Type is empty (only EvolFrust-ExpFrust has Frust_Type)
     mean_value = subset['Spearman_Rho'].mean()
 
     # Create source for the mean line with hover information
