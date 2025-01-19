@@ -242,12 +242,12 @@ data_long_corr = df_all_corr.copy()
 # Clean and format correlation data
 data_long_corr['Frust_Type'] = ''  # Empty Frust_Type for original correlations
 
-# Create and add Spearman_Diff data for the visualization
+# Create and add Spearman data for the visualization
 spearman_viz_data = data_proviz.melt(
     id_vars=['Protein'],
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
     var_name='Frust_Type',
-    value_name='Spearman_Rho'
+    value_name='Rho'  # Changed from 'Spearman_Rho' to 'Rho' to match original data
 )
 
 # Clean Frust_Type names for visualization data
@@ -256,25 +256,23 @@ spearman_viz_data['Frust_Type'] = spearman_viz_data['Frust_Type'].str.replace('S
 # Add difference data
 spearman_diff_data = pd.DataFrame({
     'Protein': data_proviz['Protein'],
-    'Spearman_Rho': data_proviz['Spearman_Diff'],
+    'Rho': data_proviz['Spearman_Diff'],  # Changed from 'Spearman_Rho' to 'Rho'
     'Frust_Type': 'Spearman_Diff',
     'Test': None,
     'MetricA': None,
     'MetricB': None,
-    'Rho': None,
     'Pval': None
 })
 
 # Combine all data
-spearman_viz_data = pd.concat([spearman_viz_data, spearman_diff_data], ignore_index=True)
+spearman_viz_data = pd.concat([spearman_viz_data, spearman_diff_data[spearman_viz_data.columns]], ignore_index=True)
 spearman_viz_data['Test'] = None
 spearman_viz_data['MetricA'] = None
 spearman_viz_data['MetricB'] = None
-spearman_viz_data['Rho'] = spearman_viz_data['Spearman_Rho']
 spearman_viz_data['Pval'] = None
 
 # Combine table data with visualization data
-data_long_corr = pd.concat([data_long_corr, spearman_viz_data[data_long_corr.columns]], ignore_index=True)
+data_long_corr = pd.concat([data_long_corr, spearman_viz_data], ignore_index=True)
 
 # Remove rows with NaN correlations
 data_long_corr.dropna(subset=['Rho'], inplace=True)
