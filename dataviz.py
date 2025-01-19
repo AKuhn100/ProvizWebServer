@@ -687,6 +687,408 @@ select_file.on_change("value", update_plot)
 # Initialize plot with default file
 if initial_file:
     update_plot(None, None, initial_file)###############################################################################
+###############################################################################
+# SECTION 4: Callback Functions and Event Handlers
+# 
+# This section contains:
+# - Plot update callbacks
+# - Data normalization functions
+# - Event handling for widget interactions
+#
+# Dependencies: Sections 1-3
+# Required before: All visualization and layout sections
+###############################################################################
+
+def min_max_normalize(arr):
+    """
+    Applies min-max normalization to a numpy array.
+    Returns an array normalized to [0, 1]. Handles division by zero.
+    """
+    arr_min = np.nanmin(arr)
+    arr_max = np.nanmax(arr)
+    if arr_max > arr_min:
+        return (arr - arr_min) / (arr_max - arr_min)
+    else:
+        return np.zeros_like(arr)
+
+
+def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
+    """
+    Adds a linear regression line and updates the regression info Div.
+    The plot_type parameter helps in uniquely naming the regression renderers.
+    """
+    if len(xvals) < 2 or np.all(xvals == xvals[0]):
+        if info_div:
+            info_div.text = "Insufficient data for regression"
+        return
+
+    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
+    if not any(not_nan):
+        if info_div:
+            info_div.text = "No valid data points"
+        return
+
+    xvals_clean = xvals[not_nan]
+    yvals_clean = yvals[not_nan]
+    if len(xvals_clean) < 2:
+        if info_div:
+            info_div.text = "Insufficient data for regression"
+        return
+
+    # Linear regression
+    slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
+
+    # Plot regression line visibly
+    x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
+    y_range = slope * x_range + intercept
+    regression_line_name = f'regression_line_{plot_type}'
+    regression_line = fig.line(
+        x_range, y_range, 
+        line_width=2, line_dash='dashed', color=color, 
+        name=regression_line_name
+    )
+
+    # Create a separate data source for regression line hover
+    regression_source = ColumnDataSource(data=dict(
+        x=x_range,
+        y=y_range,
+        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+    ))
+
+    # Plot regression line again with this data source, invisible (for hover)
+    invisible_regression_name = f'regression_hover_{plot_type}'
+    invisible_regression = fig.line(
+        'x', 'y', 
+        source=regression_source, 
+        line_width=10, 
+        alpha=0, 
+        name=invisible_regression_name
+    )
+
+    # Update regression info div with equation
+    if info_div:
+        info_div.text = f"""
+        <div style='color: {color}'>
+            <strong>y = {slope:.3f}x + {intercept:.3f}</strong><br>
+            <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
+        </div>
+        """
+
+
+def update_plot(attr, old, new):
+    """
+    Updates both the main plot and scatter plots when a new file is selected.
+    """
+    filename = select_file.value
+    if filename not in data_by_file:
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
+        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        p.title.text = "(No Data)"
+        p_scatter_exp.title.text = ""
+        p_scatter_af.title.text = ""
+        p_scatter_evol.title.text = ""
+        regression_info_exp.text = ""
+        regression_info_af.text = ""
+        regression_info_evol.text = ""
+        return
+
+    # Get window size from slider
+    window_size = window_slider.value
+
+    # Update main line plot with new window size
+    df_orig = data_by_file[filename]["df_original"]
+    df_plot = df_orig.copy()
+
+    # Apply moving average with current window size
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        df_plot[col] = moving_average(arr, window_size=window_size)
+
+    # Normalize the smoothed data
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        valid_mask = ~np.isnan(arr)
+        if not np.any(valid_mask):
+            continue
+        df_plot[col] = min_max_normalize(arr)
+
+    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    if sub_plot.empty:
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
+        p.title.text = f"{filename} (No valid rows)."
+    else:
+        new_data = dict(
+            x=sub_plot["AlnIndex"].tolist(),
+            residue=sub_plot["Residue"].tolist(),
+            b_factor=sub_plot["B_Factor"].tolist(),
+            exp_frust=sub_plot["ExpFrust"].tolist(),
+            af_frust=sub_plot["AFFrust"].tolist(),
+            evol_frust=sub_plot["EvolFrust"].tolist()
+        )
+        source_plot.data = new_data
+        p.title.text = f"{filename} (Smoothed + Normalized)"
+
+    # Update scatter plots (using NON-smoothed data)
+    df_orig = data_by_file[filename]["df_original"]
+    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+
+    # Reset regression renderers and data sources
+    remove_regression_renderers(p_scatter_exp)
+    remove_regression_renderers(p_scatter_af)
+    remove_regression_renderers(p_scatter_evol)
+
+    # Reset data sources
+    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+
+    regression_info_exp.text = ""
+    regression_info_af.text = ""
+    regression_info_evol.text = ""
+
+    if sub_orig.empty:
+        p_scatter_exp.title.text = f"{filename} (No Data)"
+        p_scatter_af.title.text = f"{filename} (No Data)"
+        p_scatter_evol.title.text = f"{filename} (No Data)"
+    else:
+        # Update scatter plots with normalized data
+        for metric, source, plot, info, color in [
+            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, Category10[10][1]),
+            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, Category10[10][2]),
+            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, Category10[10][3])
+        ]:
+            x_orig = sub_orig["B_Factor"].values
+            y_orig = sub_orig[metric].values
+            x_norm = min_max_normalize(x_orig)
+            y_norm = min_max_normalize(y_orig)
+            
+            source.data = dict(x=x_norm, y=y_norm, x_orig=x_orig, y_orig=y_orig)
+            plot.title.text = f"{filename} {metric}"
+            
+            add_regression_line_and_info(
+                fig=plot, 
+                xvals=x_norm,
+                yvals=y_norm, 
+                color=color, 
+                info_div=info,
+                plot_type=metric.lower()
+            )
+
+
+def update_moving_average(attr, old, new):
+    """Update plot when slider value changes"""
+    update_plot(None, None, select_file.value)
+
+
+# Attach callbacks
+window_slider.on_change('value', update_moving_average)
+select_file.on_change("value", update_plot)
+
+# Initialize plot with default file
+if initial_file:
+    update_plot(None, None, initial_file)###############################################################################
+# SECTION 4: Callback Functions and Event Handlers
+# 
+# This section contains:
+# - Plot update callbacks
+# - Data normalization functions
+# - Event handling for widget interactions
+#
+# Dependencies: Sections 1-3
+# Required before: All visualization and layout sections
+###############################################################################
+
+def update_moving_average(attr, old, new):
+    """Update plot when slider value changes"""
+    update_plot(None, None, select_file.value)
+
+window_slider.on_change('value', update_moving_average)
+
+def min_max_normalize(arr):
+    """
+    Applies min-max normalization to a numpy array.
+    Returns an array normalized to [0, 1]. Handles division by zero.
+    """
+    arr_min = np.nanmin(arr)
+    arr_max = np.nanmax(arr)
+    if arr_max > arr_min:
+        return (arr - arr_min) / (arr_max - arr_min)
+    else:
+        return np.zeros_like(arr)
+
+def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
+    """
+    Adds a linear regression line and updates the regression info Div.
+    The plot_type parameter helps in uniquely naming the regression renderers.
+    """
+    if len(xvals) < 2 or np.all(xvals == xvals[0]):
+        if info_div:
+            info_div.text = "Insufficient data for regression"
+        return
+
+    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
+    if not any(not_nan):
+        if info_div:
+            info_div.text = "No valid data points"
+        return
+
+    xvals_clean = xvals[not_nan]
+    yvals_clean = yvals[not_nan]
+    if len(xvals_clean) < 2:
+        if info_div:
+            info_div.text = "Insufficient data for regression"
+        return
+
+    # Linear regression
+    slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
+
+    # Plot regression line visibly
+    x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
+    y_range = slope * x_range + intercept
+    regression_line_name = f'regression_line_{plot_type}'
+    regression_line = fig.line(
+        x_range, y_range, 
+        line_width=2, line_dash='dashed', color=color, 
+        name=regression_line_name
+    )
+
+    # Create a separate data source for regression line hover
+    regression_source = ColumnDataSource(data=dict(
+        x=x_range,
+        y=y_range,
+        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+    ))
+
+    # Plot regression line again with this data source, invisible (for hover)
+    invisible_regression_name = f'regression_hover_{plot_type}'
+    invisible_regression = fig.line(
+        'x', 'y', 
+        source=regression_source, 
+        line_width=10, 
+        alpha=0, 
+        name=invisible_regression_name
+    )
+
+    # Update regression info div with equation
+    if info_div:
+        info_div.text = f"""
+        <div style='color: {color}'>
+            <strong>y = {slope:.3f}x + {intercept:.3f}</strong><br>
+            <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
+        </div>
+        """
+
+def update_plot(attr, old, new):
+    """
+    Updates both the main plot and scatter plots when a new file is selected.
+    """
+    filename = select_file.value
+    if filename not in data_by_file:
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
+        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        p.title.text = "(No Data)"
+        p_scatter_exp.title.text = ""
+        p_scatter_af.title.text = ""
+        p_scatter_evol.title.text = ""
+        regression_info_exp.text = ""
+        regression_info_af.text = ""
+        regression_info_evol.text = ""
+        return
+
+    # Get window size from slider
+    window_size = window_slider.value
+
+    # Update main line plot with new window size
+    df_orig = data_by_file[filename]["df_original"]
+    df_plot = df_orig.copy()
+
+    # Apply moving average with current window size
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        df_plot[col] = moving_average(arr, window_size=window_size)
+
+    # Normalize the smoothed data
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        valid_mask = ~np.isnan(arr)
+        if not np.any(valid_mask):
+            continue
+        df_plot[col] = min_max_normalize(arr)
+
+    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    if sub_plot.empty:
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
+        p.title.text = f"{filename} (No valid rows)."
+    else:
+        new_data = dict(
+            x=sub_plot["AlnIndex"].tolist(),
+            residue=sub_plot["Residue"].tolist(),
+            b_factor=sub_plot["B_Factor"].tolist(),
+            exp_frust=sub_plot["ExpFrust"].tolist(),
+            af_frust=sub_plot["AFFrust"].tolist(),
+            evol_frust=sub_plot["EvolFrust"].tolist()
+        )
+        source_plot.data = new_data
+        p.title.text = f"{filename} (Smoothed + Normalized)"
+
+    # Update scatter plots (using NON-smoothed data)
+    df_orig = data_by_file[filename]["df_original"]
+    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+
+    # Reset regression renderers and data sources
+    remove_regression_renderers(p_scatter_exp)
+    remove_regression_renderers(p_scatter_af)
+    remove_regression_renderers(p_scatter_evol)
+
+    # Reset data sources
+    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+
+    regression_info_exp.text = ""
+    regression_info_af.text = ""
+    regression_info_evol.text = ""
+
+    if sub_orig.empty:
+        p_scatter_exp.title.text = f"{filename} (No Data)"
+        p_scatter_af.title.text = f"{filename} (No Data)"
+        p_scatter_evol.title.text = f"{filename} (No Data)"
+    else:
+        # Update scatter plots with normalized data
+        for metric, source, plot, info, color in [
+            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, Category10[10][1]),
+            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, Category10[10][2]),
+            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, Category10[10][3])
+        ]:
+            x_orig = sub_orig["B_Factor"].values
+            y_orig = sub_orig[metric].values
+            x_norm = min_max_normalize(x_orig)
+            y_norm = min_max_normalize(y_orig)
+            
+            source.data = dict(x=x_norm, y=y_norm, x_orig=x_orig, y_orig=y_orig)
+            plot.title.text = f"{filename} {metric}"
+            
+            add_regression_line_and_info(
+                fig=plot, 
+                xvals=x_norm,
+                yvals=y_norm, 
+                color=color, 
+                info_div=info,
+                plot_type=metric.lower()
+            )
+
+# Attach callbacks
+select_file.on_change("value", update_plot)
+
+# Initialize plot with default file
+if initial_file:
+    update_plot(None, None, initial_file)
+
+###############################################################################
 # SECTION 4: Callback Functions and Event Handlers
 # 
 # This section contains:
