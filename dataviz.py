@@ -586,67 +586,6 @@ def update_plot(attr, old, new):
     if filename not in data_by_file:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        p.title.text = "(No Data)"
-        p_scatter_exp.title.text = ""
-        p_scatter_af.title.text = ""
-        p_scatter_evol.title.text = ""
-        regression_info_exp.text = ""
-        regression_info_af.text = ""
-        regression_info_evol.text = ""
-        return
-
-    # Get window size from slider
-    window_size = window_slider.value
-
-    # Update main line plot with new window size
-    df_orig = data_by_file[filename]["df_original"]
-    df_plot = df_orig.copy()
-
-    # Apply moving average with current window size
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        df_plot[col] = moving_average(arr, window_size=window_size)
-
-    # Normalize the smoothed data
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue
-        col_min = np.nanmin(arr)
-        col_max = np.nanmax(arr)
-        if col_max > col_min:
-            df_plot[col] = (arr - col_min) / (col_max - col_min)
-
-    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    if sub_plot.empty:
-        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        p.title.text = f"{filename} (No valid rows)."
-    else:
-        new_data = dict(
-            x=sub_plot["AlnIndex"].tolist(),
-            residue=sub_plot["Residue"].tolist(),
-            b_factor=sub_plot["B_Factor"].tolist(),
-            exp_frust=sub_plot["ExpFrust"].tolist(),
-            af_frust=sub_plot["AFFrust"].tolist(),
-            evol_frust=sub_plot["EvolFrust"].tolist()
-        )
-        source_plot.data = new_data
-        p.title.text = f"{filename} (Smoothed + Normalized)"
-
-    # Update scatter plots (using NON-smoothed data)
-    df_orig = data_by_file[filename]["df_original"]
-    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-
-    # **Remove all existing regression renderers**
-    remove_regression_renderers(p_scatter_exp)
-    remove_regression_renderers(p_scatter_af)
-    remove_regression_renderers(p_scatter_evol)
-
-    # Reset data sources
-    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
     source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
     source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
 
@@ -709,7 +648,68 @@ def update_plot(attr, old, new):
 
 select_file.on_change("value", update_plot)
 if initial_file:
-    update_plot(None, None, initial_file)
+    update_plot(None, None, initial_file) y_orig=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        p.title.text = "(No Data)"
+        p_scatter_exp.title.text = ""
+        p_scatter_af.title.text = ""
+        p_scatter_evol.title.text = ""
+        regression_info_exp.text = ""
+        regression_info_af.text = ""
+        regression_info_evol.text = ""
+        return
+
+    # Get window size from slider
+    window_size = window_slider.value
+
+    # Update main line plot with new window size
+    df_orig = data_by_file[filename]["df_original"]
+    df_plot = df_orig.copy()
+
+    # Apply moving average with current window size
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        df_plot[col] = moving_average(arr, window_size=window_size)
+
+    # Normalize the smoothed data
+    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
+        arr = df_plot[col].values
+        valid_mask = ~np.isnan(arr)
+        if not np.any(valid_mask):
+            continue
+        col_min = np.nanmin(arr)
+        col_max = np.nanmax(arr)
+        if col_max > col_min:
+            df_plot[col] = (arr - col_min) / (col_max - col_min)
+
+    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    if sub_plot.empty:
+        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
+        p.title.text = f"{filename} (No valid rows)."
+    else:
+        new_data = dict(
+            x=sub_plot["AlnIndex"].tolist(),
+            residue=sub_plot["Residue"].tolist(),
+            b_factor=sub_plot["B_Factor"].tolist(),
+            exp_frust=sub_plot["ExpFrust"].tolist(),
+            af_frust=sub_plot["AFFrust"].tolist(),
+            evol_frust=sub_plot["EvolFrust"].tolist()
+        )
+        source_plot.data = new_data
+        p.title.text = f"{filename} (Smoothed + Normalized)"
+
+    # Update scatter plots (using NON-smoothed data)
+    df_orig = data_by_file[filename]["df_original"]
+    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+
+    # **Remove all existing regression renderers**
+    remove_regression_renderers(p_scatter_exp)
+    remove_regression_renderers(p_scatter_af)
+    remove_regression_renderers(p_scatter_evol)
+
+    # Reset data sources
+    source_scatter_exp.data = dict(x=[], y=[], x_orig=[],
 
 
 ###############################################################################
