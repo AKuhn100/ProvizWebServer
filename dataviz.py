@@ -135,6 +135,7 @@ def remove_regression_renderers(fig):
                 continue  # Skip renderers related to regression
         new_renderers.append(r)  # Retain all other renderers
     fig.renderers = new_renderers
+    
 ###############################################################################
 # SECTION 2: Data Loading and Processing
 # 
@@ -325,42 +326,6 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 # Required before: Callbacks and layout sections
 ###############################################################################
 
-# Set dark theme properties
-dark_theme = {
-    'background_fill_color': '#2F2F2F',
-    'border_fill_color': '#2F2F2F',
-    'outline_line_color': '#444444'
-}
-
-def apply_dark_theme(p):
-    """Apply dark theme to a figure after creation"""
-    # Grid styling
-    p.grid.grid_line_color = '#444444'
-    p.grid.grid_line_alpha = 0.3
-    p.xgrid.grid_line_color = '#444444'
-    p.ygrid.grid_line_color = '#444444'
-    p.xgrid.grid_line_alpha = 0.3
-    p.ygrid.grid_line_alpha = 0.3
-    
-    # Axis styling
-    p.axis.axis_label_text_color = '#FFFFFF'
-    p.axis.axis_line_color = '#444444'
-    p.axis.major_label_text_color = '#FFFFFF'
-    p.axis.minor_tick_line_color = '#444444'
-    p.axis.major_tick_line_color = '#444444'
-    
-    # Title styling
-    p.title.text_color = '#FFFFFF'
-    
-    # Legend styling
-    if p.legend:
-        p.legend.label_text_color = '#FFFFFF'
-        p.legend.title_text_color = '#FFFFFF'
-        p.legend.background_fill_color = '#2F2F2F'
-        p.legend.border_line_color = '#444444'
-    
-    return p
-
 # (A) Main Plot: Smoothed + Normalized Data
 source_plot = ColumnDataSource(data=dict(
     x=[],
@@ -377,10 +342,8 @@ p = figure(
     height=600,
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
     active_drag="box_zoom", 
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None
 )
-p = apply_dark_theme(p)
 
 # Define separate HoverTools for each metric
 hover_bf = HoverTool(
@@ -437,6 +400,7 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # (B) Scatter Plots (Experimental, AF, Evolutionary Frustration)
+# Scatter plots configuration with disabled wheel zoom by default
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -447,11 +411,8 @@ p_scatter_exp = figure(
     y_axis_label="Normalized Experimental Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None  # Disable wheel zoom by default
 )
-p_scatter_exp = apply_dark_theme(p_scatter_exp)
-
 p_scatter_af = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -462,11 +423,8 @@ p_scatter_af = figure(
     y_axis_label="Normalized AlphaFold Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None  # Disable wheel zoom by default
 )
-p_scatter_af = apply_dark_theme(p_scatter_af)
-
 p_scatter_evol = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -477,10 +435,8 @@ p_scatter_evol = figure(
     y_axis_label="Normalized Evolutionary Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None  # Disable wheel zoom by default
 )
-p_scatter_evol = apply_dark_theme(p_scatter_evol)
 
 # ColumnDataSources will now include normalized data
 source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
@@ -491,45 +447,42 @@ source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[
 regression_info_exp = Div(
     text="", 
     styles={
-        'background-color': '#3F3F3F',
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #555555',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
         'text-align': 'center',
-        'width': '100%',
-        'color': '#FFFFFF'
+        'width': '100%'
     },
     sizing_mode="stretch_width"
 )
 regression_info_af = Div(
     text="",
     styles={
-        'background-color': '#3F3F3F',
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #555555',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
         'text-align': 'center',
-        'width': '100%',
-        'color': '#FFFFFF'
+        'width': '100%'
     },
     sizing_mode="stretch_width"
 )
 regression_info_evol = Div(
     text="",
     styles={
-        'background-color': '#3F3F3F',
+        'background-color': '#f8f9fa',
         'padding': '10px',
-        'border': '1px solid #555555',
+        'border': '1px solid #ddd',
         'border-radius': '4px',
         'margin-top': '10px',
         'font-size': '14px',
         'text-align': 'center',
-        'width': '100%',
-        'color': '#FFFFFF'
+        'width': '100%'
     },
     sizing_mode="stretch_width"
 )
@@ -960,8 +913,7 @@ p_avg_plot = figure(
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
     active_drag="box_zoom",
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None
 )
 
 # Define color palette for Frustration Types
@@ -1044,8 +996,7 @@ p_std_plot = figure(
     height=400,
     tools="pan,wheel_zoom,box_zoom,reset,save",
     active_drag="box_zoom",
-    active_scroll=None,
-    **dark_theme
+    active_scroll=None
 )
 
 # Define color palette for Frustration Types
@@ -1124,8 +1075,7 @@ p_corr_plot = figure(
     tools="pan,wheel_zoom,box_zoom,reset,save",
     active_drag="box_zoom",
     active_scroll=None,
-    toolbar_location="above",
-    **dark_theme
+    toolbar_location="above"
 )
 
 # Define color palette for Frustration Types
@@ -1322,28 +1272,16 @@ controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-siz
 # Custom styles
 custom_styles = Div(text="""
     <style>
-        body {
-            background-color: #2F2F2F;
-            color: #FFFFFF;
-        }
         .visualization-section {
             margin: 20px 0;
             width: 100%;
-            background-color: #2F2F2F;
         }
         .controls-row {
             margin: 10px 0;
             gap: 10px;
-            background-color: #2F2F2F;
         }
         .bk-root {
             width: 100% !important;
-            background-color: #2F2F2F;
-            color: #FFFFFF;
-        }
-        .bk {
-            background-color: #2F2F2F !important;
-            color: #FFFFFF !important;
         }
     </style>
 """)
