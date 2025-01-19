@@ -500,6 +500,30 @@ p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10
 # Required before: All visualization and layout sections
 ###############################################################################
 
+# Initialize widgets
+file_options = sorted(data_by_file.keys())
+if DEFAULT_FILE and DEFAULT_FILE in file_options:
+    initial_file = DEFAULT_FILE
+elif file_options:
+    initial_file = file_options[0]
+else:
+    initial_file = ""
+
+select_file = Select(
+    title="Select Protein (summary_XXXX.txt):",
+    value=initial_file,
+    options=file_options
+)
+
+window_slider = Slider(
+    start=1, 
+    end=21, 
+    value=5, 
+    step=2, 
+    title="Moving Average Window Size",
+    width=400
+)
+
 def min_max_normalize(arr):
     """
     Applies min-max normalization to a numpy array.
@@ -1214,30 +1238,7 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
-# File selection and control widgets
-file_options = sorted(data_by_file.keys())
-if DEFAULT_FILE and DEFAULT_FILE in file_options:
-    initial_file = DEFAULT_FILE
-elif file_options:
-    initial_file = file_options[0]
-else:
-    initial_file = ""
-
-select_file = Select(
-    title="Select Protein (summary_XXXX.txt):",
-    value=initial_file,
-    options=file_options
-)
-
-# Add slider for moving average window size
-window_slider = Slider(
-    start=1, 
-    end=21, 
-    value=5, 
-    step=2, 
-    title="Moving Average Window Size",
-    width=400
-)
+# Note: File selection and window slider widgets are defined in Section 4 (Callbacks)
 
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
