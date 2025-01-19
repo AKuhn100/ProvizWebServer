@@ -286,7 +286,12 @@ spearman_viz_data['MetricB'] = None
 spearman_viz_data['Pval'] = None
 
 # Combine table data with visualization data
-data_long_corr = pd.concat([data_long_corr, spearman_viz_data], ignore_index=True)
+# First, ensure both dataframes have the same columns
+common_columns = list(set(data_long_corr.columns) & set(spearman_viz_data.columns))
+data_long_corr = pd.concat([
+    data_long_corr[common_columns], 
+    spearman_viz_data[common_columns]
+], ignore_index=True)
 
 # Remove rows with NaN correlations
 data_long_corr.dropna(subset=['Rho'], inplace=True)
@@ -919,7 +924,7 @@ p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 # - Unity container and instructions
 # - Static UI elements and styles
 #
-# Dependencies: Sections 1-2
+# Dependencies: Sections 1-2, plus data structures from data-processing
 # Required before: Layout assembly
 ###############################################################################
 
@@ -994,6 +999,31 @@ unity_container = column(
     sizing_mode='stretch_width'
 )
 
+# File selection and control widgets
+file_options = sorted(data_by_file.keys())
+if DEFAULT_FILE and DEFAULT_FILE in file_options:
+    initial_file = DEFAULT_FILE
+elif file_options:
+    initial_file = file_options[0]
+else:
+    initial_file = ""
+
+select_file = Select(
+    title="Select Protein (summary_XXXX.txt):",
+    value=initial_file,
+    options=file_options
+)
+
+# Add slider for moving average window size
+window_slider = Slider(
+    start=1, 
+    end=21, 
+    value=5, 
+    step=2, 
+    title="Moving Average Window Size",
+    width=400
+)
+
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
@@ -1022,7 +1052,8 @@ custom_styles = Div(text="""
 # - Component assembly
 # - Document setup
 #
-# Dependencies: All previous sections (1-7)
+# Dependencies: All previous sections (1-7) must be fully loaded
+# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
 # This should be the last section in your script
 ###############################################################################
 def create_bar_plot_with_sd(data_proviz):
