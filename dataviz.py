@@ -1074,7 +1074,7 @@ for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
     p_corr_plot.scatter(
-        'Protein', 'Spearman_Rho',
+        'Protein', 'Rho',
         source=source_subset,
         color=color_map_corr[frust],
         size=8,
