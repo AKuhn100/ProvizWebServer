@@ -1088,7 +1088,7 @@ for frust in frust_types_corr:
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     if frust == "":
         continue  # Skip if Frust_Type is empty (only Spearman_Diff has Frust_Type)
-    mean_value = subset['Spearman_Rho'].mean()
+    mean_value = subset['Rho'].mean()  # Changed from 'Spearman_Rho' to 'Rho'
 
     # Create source for the mean line with hover information
     mean_source = ColumnDataSource(data=dict(
