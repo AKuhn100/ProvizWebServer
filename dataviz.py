@@ -8,7 +8,7 @@ from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxGroup, Div, Spacer,
     DataTable, TableColumn, NumberFormatter, HoverTool, 
-    GlyphRenderer, Slider, Whisker, Label, Range1d
+    GlyphRenderer, Slider, Whisker, Label, Range1d, Legend
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
@@ -135,7 +135,6 @@ def remove_regression_renderers(fig):
                 continue  # Skip renderers related to regression
         new_renderers.append(r)  # Retain all other renderers
     fig.renderers = new_renderers
-
 ###############################################################################
 # SECTION 2: Data Loading and Processing
 # 
