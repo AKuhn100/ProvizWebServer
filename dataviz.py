@@ -1204,9 +1204,6 @@ unity_container = column(
 # Controls section
 controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
 
-# Arrange CheckboxGroup widgets in the controls_layout already defined above
-# Removed the old MultiSelect widgets and replaced with CheckboxGroups arranged in columns
-
 # Custom styles
 custom_styles = Div(text="""
     <style>
@@ -1224,12 +1221,11 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
+# (G) Bar Plot with Mean, SD
 def create_bar_plot_with_sd(data_proviz):
     """
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
     with error bars representing the standard deviation.
-    Adjusts the y-axis range to ensure whiskers are fully visible.
     """
     # Compute mean and standard deviation of Spearman Rho per metric
     spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
@@ -1242,8 +1238,6 @@ def create_bar_plot_with_sd(data_proviz):
 
     # Clean Metric names
     stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-
-    # Assign colors based on Metric using the predefined FRUSTRATION_COLORS dictionary
     stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
 
     # Create ColumnDataSource for the bar plot
@@ -1261,18 +1255,18 @@ def create_bar_plot_with_sd(data_proviz):
         toolbar_location="above"
     )
 
-    # Add vertical bars and capture the renderer
+    # Add vertical bars
     vbar_renderer = p_bar.vbar(
         x='Metric',
         top='Mean_Spearman_Rho',
         width=0.6,
         source=source_bar,
-        color='Color',  # Reference the 'Color' column in the data source
+        color='Color',
         legend_label="Frustration Metric",
         line_color="black"
     )
 
-    # Add error bars using Whisker
+    # Add error bars
     whisker = Whisker(
         base='Metric',
         upper='upper',
@@ -1286,18 +1280,13 @@ def create_bar_plot_with_sd(data_proviz):
     source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
     source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
 
-    # **New Addition**: Adjust y-axis range to include padding
-    # Determine the minimum and maximum values for the y-axis
+    # Adjust y-axis range
     min_lower = source_bar.data['lower'].min()
     max_upper = source_bar.data['upper'].max()
-
-    # Calculate padding (10% of the range)
     y_padding = (max_upper - min_lower) * 0.1 if (max_upper - min_lower) != 0 else 1
-
-    # Set the y_range with padding
     p_bar.y_range = Range1d(start=min_lower - y_padding, end=max_upper + y_padding)
 
-    # Add horizontal line at y=0 for reference
+    # Add horizontal reference line
     p_bar.line(
         x=[-0.5, len(stats_corrs) - 0.5], 
         y=[0, 0], 
@@ -1306,35 +1295,33 @@ def create_bar_plot_with_sd(data_proviz):
         color='gray'
     )
 
-    # Customize hover tool and correctly reference the vbar renderer
+    # Add hover tool
     hover_bar = HoverTool(
         tooltips=[
             ("Metric", "@Metric"),
             ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
             ("Std Dev", "@Std_Spearman_Rho{0.3f}")
         ],
-        renderers=[vbar_renderer],  # Correctly pass the renderer
+        renderers=[vbar_renderer],
         mode='mouse'
     )
     p_bar.add_tools(hover_bar)
-
-    # Remove legend as it's redundant with colors
     p_bar.legend.visible = False
 
     return p_bar
 
-# (F) Layout for Additional Plots
+# Layout components
 additional_plots = column(
     p_avg_plot,
     p_std_plot,
     p_corr_plot,
-    create_bar_plot_with_sd(data_proviz),  # Integrated Bar Plot without T-Tests
+    create_bar_plot_with_sd(data_proviz),
     sizing_mode='stretch_width',
     spacing=20,
     name="additional_plots"
 )
 
-# (G) Scatter Plots Layout
+# Scatter Plots Layout
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
@@ -1354,7 +1341,7 @@ scatter_col_evol = column(
     styles={'flex': '1 1 350px', 'min-width': '350px'}
 )
 
-# Update scatter plots row with flex layout and minimum widths
+# Scatter plots row
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
@@ -1370,14 +1357,14 @@ scatter_row = row(
     }
 )
 
-# (I) Main layout with slider and additional plots
+# Main visualization section
 visualization_section = column(
+    unity_container,  # Unity iframe moved to the top
     select_file,
     window_slider,
     p,
     scatter_row,
-    unity_container,
-    additional_plots,  # Integrated Additional Plots
+    additional_plots,
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
@@ -1388,10 +1375,11 @@ main_layout = column(
     header,
     visualization_section,
     controls_section,
-    controls_layout,  # Updated controls layout with CheckboxGroups
+    controls_layout,
     data_table,
     sizing_mode='stretch_width'
 )
+
 # Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
