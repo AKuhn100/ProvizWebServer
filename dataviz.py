@@ -15,7 +15,15 @@ from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
 
 ###############################################################################
-# 1) Configuration
+# SECTION 1: Core Configuration and Imports
+# 
+# This section contains:
+# - All required imports
+# - Basic configuration settings
+# - Core helper functions for data processing
+#
+# Dependencies: numpy, pandas, scipy, bokeh
+# No dependencies on other sections
 ###############################################################################
 # Local data directory path
 DATA_DIR = "summary_data"  # Directory containing the summary files
@@ -129,7 +137,15 @@ def remove_regression_renderers(fig):
     fig.renderers = new_renderers
 
 ###############################################################################
-# 3) Load and Aggregate Data from Local Directory
+# SECTION 2: Data Loading and Processing
+# 
+# This section contains:
+# - Data loading from local directory
+# - Initial data processing and aggregation
+# - Creation of data structures for visualization
+#
+# Dependencies: Section 1 (bokeh-core)
+# Required before: All visualization sections
 ###############################################################################
 data_by_file = {}
 all_corr_rows = []
@@ -201,8 +217,6 @@ data_proviz = pd.DataFrame({
     'Spearman_AFFrust': spearman_af,
     'Spearman_EvolFrust': spearman_evol
 })
-
-# ---------------------- Integrated Changes Start Here ----------------------
 
 # Calculate Spearman difference
 data_proviz['Spearman_Diff'] = (
@@ -291,10 +305,16 @@ FRUSTRATION_COLORS["Spearman_Diff"] = Category10[10][4]  # Orange color for diff
 # Create ColumnDataSource for the correlation plot
 source_corr_plot = ColumnDataSource(data_long_corr)
 
-# ----------------------- Integrated Changes End Here -----------------------
-
 ###############################################################################
-# 4) Bokeh Application Components
+# SECTION 3: Main Visualization Components
+# 
+# This section contains:
+# - Main line plot setup
+# - Scatter plot configurations
+# - Common visualization elements (hover tools, legends, etc.)
+#
+# Dependencies: Sections 1-2
+# Required before: Callbacks and layout sections
 ###############################################################################
 
 # (A) Main Plot: Smoothed + Normalized Data
@@ -463,257 +483,16 @@ p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][
 p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7)
 p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7)
 
-def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
-    """
-    Adds a linear regression line and updates the regression info Div.
-    The plot_type parameter helps in uniquely naming the regression renderers.
-    """
-    if len(xvals) < 2 or np.all(xvals == xvals[0]):
-        if info_div:
-            info_div.text = "Insufficient data for regression"
-        return
-
-    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
-    if not any(not_nan):
-        if info_div:
-            info_div.text = "No valid data points"
-        return
-
-    xvals_clean = xvals[not_nan]
-    yvals_clean = yvals[not_nan]
-    if len(xvals_clean) < 2:
-        if info_div:
-            info_div.text = "Insufficient data for regression"
-        return
-
-    # Linear regression
-    slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
-
-    # Plot regression line visibly
-    x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
-    y_range = slope * x_range + intercept
-    regression_line_name = f'regression_line_{plot_type}'
-    regression_line = fig.line(
-        x_range, y_range, 
-        line_width=2, line_dash='dashed', color=color, 
-        name=regression_line_name
-    )
-
-    # Create a separate data source for regression line hover
-    regression_source = ColumnDataSource(data=dict(
-        x=x_range,
-        y=y_range,
-        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-    ))
-
-    # Plot regression line again with this data source, invisible (for hover)
-    invisible_regression_name = f'regression_hover_{plot_type}'
-    invisible_regression = fig.line(
-        'x', 'y', 
-        source=regression_source, 
-        line_width=10, 
-        alpha=0, 
-        name=invisible_regression_name  # Unique name
-    )
-
-    # Add a separate HoverTool for the regression line
-    hover_regression = HoverTool(
-        renderers=[regression_line],
-        tooltips=[
-            ("Regression Equation", "@equation")
-        ],
-        mode='mouse'
-    )
-    # fig.add_tools(hover_regression)
-
-    # Update regression info div with equation
-    if info_div:
-        info_div.text = f"""
-        <div style='color: {color}'>
-            <strong>y = {slope:.3f}x + {intercept:.3f}</strong><br>
-            <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
-        </div>
-        """
-
-# Dropdown select
-file_options = sorted(data_by_file.keys())
-if DEFAULT_FILE and DEFAULT_FILE in file_options:
-    initial_file = DEFAULT_FILE
-elif file_options:
-    initial_file = file_options[0]
-else:
-    initial_file = ""
-
-select_file = Select(
-    title="Select Protein (summary_XXXX.txt):",
-    value=initial_file,
-    options=file_options
-)
-
-# Add slider for moving average window size
-window_slider = Slider(
-    start=1, 
-    end=21, 
-    value=5, 
-    step=2, 
-    title="Moving Average Window Size",
-    width=400
-)
-
-def update_moving_average(attr, old, new):
-    """Update plot when slider value changes"""
-    update_plot(None, None, select_file.value)
-
-window_slider.on_change('value', update_moving_average)
-
-def min_max_normalize(arr):
-    """
-    Applies min-max normalization to a numpy array.
-    Returns an array normalized to [0, 1]. Handles division by zero.
-    """
-    arr_min = np.nanmin(arr)
-    arr_max = np.nanmax(arr)
-    if arr_max > arr_min:
-        return (arr - arr_min) / (arr_max - arr_min)
-    else:
-        return np.zeros_like(arr)  # If all values are the same, return zeros
-
-def update_plot(attr, old, new):
-    """
-    Updates both the main plot and scatter plots when a new file is selected.
-    """
-    filename = select_file.value
-    if filename not in data_by_file:
-        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        p.title.text = "(No Data)"
-        p_scatter_exp.title.text = ""
-        p_scatter_af.title.text = ""
-        p_scatter_evol.title.text = ""
-        regression_info_exp.text = ""
-        regression_info_af.text = ""
-        regression_info_evol.text = ""
-        return
-
-    # Get window size from slider
-    window_size = window_slider.value
-
-    # Update main line plot with new window size
-    df_orig = data_by_file[filename]["df_original"]
-    df_plot = df_orig.copy()
-
-    # Apply moving average with current window size
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        df_plot[col] = moving_average(arr, window_size=window_size)
-
-    # Normalize the smoothed data
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue
-        col_min = np.nanmin(arr)
-        col_max = np.nanmax(arr)
-        if col_max > col_min:
-            df_plot[col] = (arr - col_min) / (col_max - col_min)
-
-    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    if sub_plot.empty:
-        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        p.title.text = f"{filename} (No valid rows)."
-    else:
-        new_data = dict(
-            x=sub_plot["AlnIndex"].tolist(),
-            residue=sub_plot["Residue"].tolist(),
-            b_factor=sub_plot["B_Factor"].tolist(),
-            exp_frust=sub_plot["ExpFrust"].tolist(),
-            af_frust=sub_plot["AFFrust"].tolist(),
-            evol_frust=sub_plot["EvolFrust"].tolist()
-        )
-        source_plot.data = new_data
-        p.title.text = f"{filename} (Smoothed + Normalized)"
-
-    # Update scatter plots (using NON-smoothed data)
-    df_orig = data_by_file[filename]["df_original"]
-    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-
-    # **Remove all existing regression renderers**
-    remove_regression_renderers(p_scatter_exp)
-    remove_regression_renderers(p_scatter_af)
-    remove_regression_renderers(p_scatter_evol)
-
-    # Reset data sources
-    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-
-    regression_info_exp.text = ""
-    regression_info_af.text = ""
-    regression_info_evol.text = ""
-
-    if sub_orig.empty:
-        p_scatter_exp.title.text = f"{filename} (No Data)"
-        p_scatter_af.title.text = f"{filename} (No Data)"
-        p_scatter_evol.title.text = f"{filename} (No Data)"
-    else:
-        # ExpFrust
-        x_exp_orig = sub_orig["B_Factor"].values
-        y_exp_orig = sub_orig["ExpFrust"].values
-        x_exp_norm = min_max_normalize(x_exp_orig)
-        y_exp_norm = min_max_normalize(y_exp_orig)
-        source_scatter_exp.data = dict(x=x_exp_norm, y=y_exp_norm, x_orig=x_exp_orig, y_orig=y_exp_orig)
-        p_scatter_exp.title.text = f"{filename} Experimental Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_exp, 
-            xvals=x_exp_norm,  # Use normalized data
-            yvals=y_exp_norm, 
-            color=Category10[10][1], 
-            info_div=regression_info_exp,
-            plot_type="exp"
-        )
-
-        # AFFrust
-        x_af_orig = sub_orig["B_Factor"].values
-        y_af_orig = sub_orig["AFFrust"].values
-        x_af_norm = min_max_normalize(x_af_orig)
-        y_af_norm = min_max_normalize(y_af_orig)
-        source_scatter_af.data = dict(x=x_af_norm, y=y_af_norm, x_orig=x_af_orig, y_orig=y_af_orig)
-        p_scatter_af.title.text = f"{filename} AF Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_af, 
-            xvals=x_af_norm, 
-            yvals=y_af_norm, 
-            color=Category10[10][2], 
-            info_div=regression_info_af,
-            plot_type="af"
-        )
-
-        # EvolFrust
-        x_evol_orig = sub_orig["B_Factor"].values
-        y_evol_orig = sub_orig["EvolFrust"].values
-        x_evol_norm = min_max_normalize(x_evol_orig)
-        y_evol_norm = min_max_normalize(y_evol_orig)
-        source_scatter_evol.data = dict(x=x_evol_norm, y=y_evol_norm, x_orig=x_evol_orig, y_orig=y_evol_orig)
-        p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_evol, 
-            xvals=x_evol_norm, 
-            yvals=y_evol_norm, 
-            color=Category10[10][3], 
-            info_div=regression_info_evol,
-            plot_type="evol"
-        )
-
-select_file.on_change("value", update_plot)
-if initial_file:
-    update_plot(None, None, initial_file)
-
-
 ###############################################################################
-# 5) CORRELATION TABLE AND FILTERS
+# SECTION 4: Correlation Analysis Components
+# 
+# This section contains:
+# - Correlation table setup
+# - Table columns and formatting
+# - Data source initialization
+#
+# Dependencies: Sections 1-2
+# Required before: Filter controls and layout sections
 ###############################################################################
 
 # (D) CORRELATION TABLE
@@ -740,7 +519,17 @@ else:
     ]
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# (E) FILTERS for correlation table
+###############################################################################
+# SECTION 5: Filter Controls and Callbacks
+# 
+# This section contains:
+# - Filter UI components
+# - Filter logic and callbacks
+# - Layout for filter controls
+#
+# Dependencies: Sections 1-4
+# Required before: Layout assembly
+###############################################################################
 
 # Define helper function to split labels into columns
 def split_labels(labels, num_columns):
@@ -852,9 +641,17 @@ def update_corr_filter(attr, old, new):
 # Attach callbacks to all CheckboxGroups
 for checkbox in checkbox_tests_columns + checkbox_combos_columns:
     checkbox.on_change('active', update_corr_filter)
-    
+
 ###############################################################################
-# 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
+# SECTION 6: Additional Visualization Components
+# 
+# This section contains:
+# - Additional statistical plots
+# - Aggregate visualizations
+# - Correlation plots
+#
+# Dependencies: Sections 1-3
+# Required before: Layout assembly
 ###############################################################################
 
 # (F) Spearman Rho vs Average B-Factor
@@ -1115,7 +912,15 @@ from math import pi
 p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
 ###############################################################################
-# 7) User Interface Components
+# SECTION 7: UI Components and Static Content
+# 
+# This section contains:
+# - Header and description components
+# - Unity container and instructions
+# - Static UI elements and styles
+#
+# Dependencies: Sections 1-2
+# Required before: Layout assembly
 ###############################################################################
 
 # Add header and description
@@ -1209,7 +1014,17 @@ custom_styles = Div(text="""
     </style>
 """)
 
-# (G) Bar Plot with Mean, SD
+###############################################################################
+# SECTION 8: Final Layout Assembly
+# 
+# This section contains:
+# - Final layout configuration
+# - Component assembly
+# - Document setup
+#
+# Dependencies: All previous sections (1-7)
+# This should be the last section in your script
+###############################################################################
 def create_bar_plot_with_sd(data_proviz):
     """
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
