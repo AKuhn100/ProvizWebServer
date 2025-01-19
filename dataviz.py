@@ -1075,7 +1075,7 @@ p_corr_plot = figure(
 )
 
 # Define color palette for Frustration Types
-frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
+frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
 palette_corr = Category10[max(3, len(frust_types_corr))]
 color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) for i, frust in enumerate(frust_types_corr)}
 
@@ -1103,17 +1103,22 @@ p_corr_plot.line(
 # Add scatter glyphs
 for frust in frust_types_corr:
     if frust != "":  # Skip empty Frust_Type
-        subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
-        source_subset = ColumnDataSource(subset)
-        p_corr_plot.scatter(
-            'Protein', 'Rho',
-            source=source_subset,
-            color=color_map_corr[frust],
-            size=8,
-            alpha=0.6,
-            legend_label=frust,
-            muted_alpha=0.1
-        )
+        subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+        if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
+            # Ensure Protein is categorical with proper ordering
+            subset['Protein'] = pd.Categorical(subset['Protein'], categories=protein_order, ordered=True)
+            # Sort by Protein to maintain order
+            subset = subset.sort_values('Protein')
+            source_subset = ColumnDataSource(subset)
+            p_corr_plot.scatter(
+                'Protein', 'Rho',
+                source=source_subset,
+                color=color_map_corr[frust],
+                size=8,
+                alpha=0.6,
+                legend_label=frust,
+                muted_alpha=0.1
+            )
 
 # Add mean lines for each frustration type
 for frust in frust_types_corr:
