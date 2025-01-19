@@ -236,36 +236,56 @@ data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_
 data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
 data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 
-# Create data_long_corr with individual metrics
-data_long_corr = data_proviz.melt(
+# Create data_long_corr from the original correlation DataFrame first
+data_long_corr = df_all_corr.copy()
+
+# Clean and format correlation data
+data_long_corr['Frust_Type'] = ''  # Empty Frust_Type for original correlations
+
+# Create and add Spearman_Diff data for the visualization
+spearman_viz_data = data_proviz.melt(
     id_vars=['Protein'],
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
     var_name='Frust_Type',
     value_name='Spearman_Rho'
 )
 
-# Clean Frust_Type names for correlation data
-data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+# Clean Frust_Type names for visualization data
+spearman_viz_data['Frust_Type'] = spearman_viz_data['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 
-# Create and add Spearman_Diff data
+# Add difference data
 spearman_diff_data = pd.DataFrame({
     'Protein': data_proviz['Protein'],
     'Spearman_Rho': data_proviz['Spearman_Diff'],
-    'Frust_Type': 'EvolFrust-ExpFrust'
+    'Frust_Type': 'Spearman_Diff',
+    'Test': None,
+    'MetricA': None,
+    'MetricB': None,
+    'Rho': None,
+    'Pval': None
 })
 
-# Concatenate the individual metrics with the difference data
-data_long_corr = pd.concat([data_long_corr, spearman_diff_data], ignore_index=True)
+# Combine all data
+spearman_viz_data = pd.concat([spearman_viz_data, spearman_diff_data], ignore_index=True)
+spearman_viz_data['Test'] = None
+spearman_viz_data['MetricA'] = None
+spearman_viz_data['MetricB'] = None
+spearman_viz_data['Rho'] = spearman_viz_data['Spearman_Rho']
+spearman_viz_data['Pval'] = None
+
+# Combine table data with visualization data
+data_long_corr = pd.concat([data_long_corr, spearman_viz_data[data_long_corr.columns]], ignore_index=True)
 
 # Remove rows with NaN correlations
-data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
+data_long_corr.dropna(subset=['Rho'], inplace=True)
 
 # Make Protein categorical with ordered categories based on Spearman_Diff
-data_long_corr['Protein'] = pd.Categorical(
-    data_long_corr['Protein'],
-    categories=protein_order,
-    ordered=True
-)
+if 'Protein' in data_long_corr.columns:
+    data_long_corr['Protein'] = pd.Categorical(
+        data_long_corr['Protein'],
+        categories=protein_order,
+        ordered=True
+    )
 
 # Update the FRUSTRATION_COLORS dictionary to include Spearman_Diff
 FRUSTRATION_COLORS["Spearman_Diff"] = Category10[10][4]  # Orange color for difference
