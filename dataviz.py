@@ -330,14 +330,22 @@ dark_theme = {
     'background_fill_color': '#2F2F2F',
     'border_fill_color': '#2F2F2F',
     'outline_line_color': '#444444',
-    'grid_line_color': '#444444',
-    'axis_line_color': '#444444',
     'axis_label_text_color': '#FFFFFF',
     'axis_text_color': '#FFFFFF',
     'title_text_color': '#FFFFFF',
     'legend_text_color': '#FFFFFF',
     'legend_label_text_color': '#FFFFFF'
 }
+
+def apply_dark_theme(p):
+    """Apply dark theme to a figure after creation"""
+    p.grid.grid_line_color = '#444444'
+    p.grid.grid_line_alpha = 0.3
+    p.xgrid.grid_line_color = '#444444'
+    p.ygrid.grid_line_color = '#444444'
+    p.xgrid.grid_line_alpha = 0.3
+    p.ygrid.grid_line_alpha = 0.3
+    return p
 
 # (A) Main Plot: Smoothed + Normalized Data
 source_plot = ColumnDataSource(data=dict(
@@ -358,6 +366,7 @@ p = figure(
     active_scroll=None,
     **dark_theme
 )
+p = apply_dark_theme(p)
 
 # Define separate HoverTools for each metric
 hover_bf = HoverTool(
@@ -414,7 +423,6 @@ p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
 # (B) Scatter Plots (Experimental, AF, Evolutionary Frustration)
-# Scatter plots configuration with disabled wheel zoom by default
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -425,9 +433,11 @@ p_scatter_exp = figure(
     y_axis_label="Normalized Experimental Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,  # Disable wheel zoom by default
+    active_scroll=None,
     **dark_theme
 )
+p_scatter_exp = apply_dark_theme(p_scatter_exp)
+
 p_scatter_af = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -438,9 +448,11 @@ p_scatter_af = figure(
     y_axis_label="Normalized AlphaFold Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,  # Disable wheel zoom by default
+    active_scroll=None,
     **dark_theme
 )
+p_scatter_af = apply_dark_theme(p_scatter_af)
+
 p_scatter_evol = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
@@ -451,9 +463,10 @@ p_scatter_evol = figure(
     y_axis_label="Normalized Evolutionary Frustration",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None,  # Disable wheel zoom by default
+    active_scroll=None,
     **dark_theme
 )
+p_scatter_evol = apply_dark_theme(p_scatter_evol)
 
 # ColumnDataSources will now include normalized data
 source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
