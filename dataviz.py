@@ -329,22 +329,36 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 dark_theme = {
     'background_fill_color': '#2F2F2F',
     'border_fill_color': '#2F2F2F',
-    'outline_line_color': '#444444',
-    'axis_label_text_color': '#FFFFFF',
-    'axis_text_color': '#FFFFFF',
-    'title_text_color': '#FFFFFF',
-    'legend_text_color': '#FFFFFF',
-    'legend_label_text_color': '#FFFFFF'
+    'outline_line_color': '#444444'
 }
 
 def apply_dark_theme(p):
     """Apply dark theme to a figure after creation"""
+    # Grid styling
     p.grid.grid_line_color = '#444444'
     p.grid.grid_line_alpha = 0.3
     p.xgrid.grid_line_color = '#444444'
     p.ygrid.grid_line_color = '#444444'
     p.xgrid.grid_line_alpha = 0.3
     p.ygrid.grid_line_alpha = 0.3
+    
+    # Axis styling
+    p.axis.axis_label_text_color = '#FFFFFF'
+    p.axis.axis_line_color = '#444444'
+    p.axis.major_label_text_color = '#FFFFFF'
+    p.axis.minor_tick_line_color = '#444444'
+    p.axis.major_tick_line_color = '#444444'
+    
+    # Title styling
+    p.title.text_color = '#FFFFFF'
+    
+    # Legend styling
+    if p.legend:
+        p.legend.label_text_color = '#FFFFFF'
+        p.legend.title_text_color = '#FFFFFF'
+        p.legend.background_fill_color = '#2F2F2F'
+        p.legend.border_line_color = '#444444'
+    
     return p
 
 # (A) Main Plot: Smoothed + Normalized Data
