@@ -279,25 +279,29 @@ spearman_diff_data = pd.DataFrame({
 })
 
 # Combine all data
-spearman_viz_data = pd.concat([spearman_viz_data, spearman_diff_data[spearman_viz_data.columns]], ignore_index=True)
-spearman_viz_data['Test'] = None
-spearman_viz_data['MetricA'] = None
-spearman_viz_data['MetricB'] = None
-spearman_viz_data['Pval'] = None
-
-# Combine table data with visualization data
-# First, ensure both dataframes have the same columns
-common_columns = list(set(data_long_corr.columns) & set(spearman_viz_data.columns))
-data_long_corr = pd.concat([
-    data_long_corr[common_columns], 
-    spearman_viz_data[common_columns]
+spearman_viz_data = pd.concat([
+    spearman_viz_data, 
+    spearman_diff_data[spearman_viz_data.columns]
 ], ignore_index=True)
 
-# Remove rows with NaN correlations
-data_long_corr.dropna(subset=['Rho'], inplace=True)
+# Ensure all required columns exist
+required_cols = ['Test', 'MetricA', 'MetricB', 'Pval', 'Protein', 'Rho', 'Frust_Type']
+for col in required_cols:
+    if col not in spearman_viz_data.columns:
+        spearman_viz_data[col] = None
+
+# Combine table data with visualization data
+data_long_corr = pd.concat([
+    df_all_corr,
+    spearman_viz_data[required_cols]
+], ignore_index=True)
+
+# Remove rows with NaN correlations and ensure proper types
+data_long_corr = data_long_corr.dropna(subset=['Rho'])
+data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].fillna('')
 
 # Make Protein categorical with ordered categories based on Spearman_Diff
-if 'Protein' in data_long_corr.columns:
+if 'Protein' in data_long_corr.columns and protein_order:
     data_long_corr['Protein'] = pd.Categorical(
         data_long_corr['Protein'],
         categories=protein_order,
@@ -1101,24 +1105,41 @@ p_corr_plot.line(
 )
 
 # Add scatter glyphs
+legend_items = []
+print(f"Available frustration types: {frust_types_corr}")
+print(f"Data shape: {data_long_corr.shape}")
+print(f"Columns: {data_long_corr.columns}")
+
 for frust in frust_types_corr:
     if frust != "":  # Skip empty Frust_Type
         subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+        print(f"Subset for {frust}: {len(subset)} rows")
+        
         if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
+            print(f"Processing {frust} with {len(subset)} rows")
+            print(f"Sample data for {frust}:")
+            print(subset[['Protein', 'Rho', 'Frust_Type']].head())
+            
             # Ensure Protein is categorical with proper ordering
             subset['Protein'] = pd.Categorical(subset['Protein'], categories=protein_order, ordered=True)
             # Sort by Protein to maintain order
             subset = subset.sort_values('Protein')
             source_subset = ColumnDataSource(subset)
-            p_corr_plot.scatter(
-                'Protein', 'Rho',
+            
+            renderer = p_corr_plot.scatter(
+                x='Protein',
+                y='Rho',
                 source=source_subset,
                 color=color_map_corr[frust],
                 size=8,
                 alpha=0.6,
-                legend_label=frust,
-                muted_alpha=0.1
+                name=f'scatter_{frust}'
             )
+            legend_items.append((frust, [renderer]))
+
+if legend_items:
+    legend = Legend(items=legend_items, location="top_left", title="Frustration Type", click_policy="mute")
+    p_corr_plot.add_layout(legend)
 
 # Add mean lines for each frustration type
 for frust in frust_types_corr:
