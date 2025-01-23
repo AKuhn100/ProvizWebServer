@@ -958,7 +958,7 @@ def create_violin_plot():
         title="Distribution of Spearman Correlations by Frustration Type",
         x_axis_label="Spearman Correlation Between Frustration and B-factor",
         y_axis_label="Frustration Metric",
-        height=600,
+        height=400,
         sizing_mode="stretch_width",
         toolbar_location=None
     )
@@ -968,7 +968,7 @@ def create_violin_plot():
         # Create source for violin curve
         source = ColumnDataSource({
             'x': data['x'],
-            'y': [i + y/10 for y in data['y']],  # Scale and shift the density curve
+            'y': [i + y/3 for y in data['y']],  # Scale and shift the density curve
         })
         
         # Plot violin
