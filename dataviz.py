@@ -889,6 +889,8 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # Required before: Layout assembly
 ###############################################################################
 
+from math import pi  # Add import for pi constant
+
 # Initialize data source
 source_corr_plot = ColumnDataSource(data_long_corr)
 
