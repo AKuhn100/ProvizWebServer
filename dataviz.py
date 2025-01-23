@@ -989,201 +989,43 @@ if legend_items:
 
 # Rotate x-axis labels to prevent overlapping
 from math import pi
-p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees###############################################################################
+p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+
+###############################################################################
 # SECTION 7: Additional Visualization Components
 # 
 # This section contains:
-# - Additional statistical plots
-# - Aggregate visualizations
-# - Correlation plots
+# - Correlation plots with sorting functionality
+# - Summary statistics
 #
 # Dependencies: Sections 1-3
 # Required before: Layout assembly
 ###############################################################################
 
-# Initialize data sources with empty data if necessary
-if data_long_avg.empty:
-    data_long_avg = pd.DataFrame(columns=['Protein', 'Avg_B_Factor', 'Frust_Type', 'Spearman_Rho'])
-    data_long_std = pd.DataFrame(columns=['Protein', 'Std_B_Factor', 'Frust_Type', 'Spearman_Rho'])
-    data_long_corr = pd.DataFrame(columns=['Test', 'MetricA', 'MetricB', 'Rho', 'Pval', 'Frust_Type', 'Protein'])
-
-# Create data sources
-source_avg_plot = ColumnDataSource(data_long_avg)
-source_std_plot = ColumnDataSource(data_long_std)
+# Initialize data source
 source_corr_plot = ColumnDataSource(data_long_corr)
 
 # Ensure protein_order is defined
 if 'protein_order' not in globals():
     protein_order = []
 
-p_avg_plot = figure(
-    title="Spearman Correlation vs Average B-Factor",
-    x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-    sizing_mode='stretch_width',
-    height=400,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None
+# Create sorting button
+sort_select = Select(
+    title="Sort Proteins By:",
+    value="Spearman Diff",
+    options=["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."],
+    width=200
 )
 
-# Define color palette for Frustration Types
-frust_types_avg = data_long_avg['Frust_Type'].unique().tolist()
-palette_avg = Category10[max(3, len(frust_types_avg))]
-color_map_frust_avg = {frust: palette_avg[i] for i, frust in enumerate(frust_types_avg)}
-
-# Create a list to hold scatter renderers
-scatter_renderers_avg = []
-
-# Add scatter glyphs with named renderers and collect renderers
-for frust in frust_types_avg:
-    subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
-    source_subset = ColumnDataSource(subset)
-    scatter = p_avg_plot.scatter(
-        'Avg_B_Factor', 'Spearman_Rho',
-        source=source_subset,
-        color=color_map_frust_avg[frust],
-        size=8,
-        alpha=0.6,
-        legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'
-    )
-    scatter_renderers_avg.append(scatter)
-
-    # Add regression lines with hover
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-
-        regression_line = p_avg_plot.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust_avg[frust], 
-            line_dash='dashed',
-            name=f'regression_line_{frust}'
-        )
-
-        hover_regression = HoverTool(
-            renderers=[regression_line],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_avg_plot.add_tools(hover_regression)
-
-# Create and add the standard HoverTool
-hover_scatter_avg = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=scatter_renderers_avg,
-    mode='mouse'
-)
-p_avg_plot.add_tools(hover_scatter_avg)
-
-p_avg_plot.legend.location = "top_left"
-p_avg_plot.legend.title = "Frustration Type"
-p_avg_plot.legend.click_policy = "mute"
-
-# (G) Spearman Rho vs Std Dev of B-Factor
-source_std_plot = ColumnDataSource(data_long_std)
-
-p_std_plot = figure(
-    title="Spearman Correlation vs Std Dev of B-Factor",
-    x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-    sizing_mode='stretch_width',
-    height=400,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None
-)
-
-# Define color palette for Frustration Types
-frust_types_std = data_long_std['Frust_Type'].unique().tolist()
-palette_std = Category10[max(3, len(frust_types_std))]
-color_map_frust_std = {frust: palette_std[i] for i, frust in enumerate(frust_types_std)}
-
-scatter_renderers_std = []
-
-for frust in frust_types_std:
-    subset = data_long_std[data_long_std['Frust_Type'] == frust]
-    source_subset = ColumnDataSource(subset)
-    scatter = p_std_plot.scatter(
-        'Std_B_Factor', 'Spearman_Rho',
-        source=source_subset,
-        color=color_map_frust_std[frust],
-        size=8,
-        alpha=0.6,
-        legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'
-    )
-    scatter_renderers_std.append(scatter)
-
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-
-        regression_line = p_std_plot.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust_std[frust], 
-            line_dash='dashed',
-            name=f'regression_line_{frust}'
-        )
-
-        hover_regression = HoverTool(
-            renderers=[regression_line],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_std_plot.add_tools(hover_regression)
-
-hover_scatter_std = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=scatter_renderers_std,
-    mode='mouse'
-)
-p_std_plot.add_tools(hover_scatter_std)
-
-p_std_plot.legend.location = "top_left"
-p_std_plot.legend.title = "Frustration Type"
-p_std_plot.legend.click_policy = "mute"
-
-# (H) Spearman Rho per Protein and Frustration Metric
+# Spearman Rho per Protein and Frustration Metric
 p_corr_plot = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein (Ordered by EvolFrust-ExpFrust)",
+    x_axis_label="Protein (click legend to show/hide metrics)",
     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=protein_order,
     sizing_mode='stretch_width',
     height=600,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
+    tools="pan,box_zoom,wheel_zoom,reset,save",
     active_drag="box_zoom",
     active_scroll=None,
     toolbar_location="above"
@@ -1191,15 +1033,15 @@ p_corr_plot = figure(
 
 # Define color palette for Frustration Types
 frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
-palette_corr = Category10[max(3, len(frust_types_corr))]
-color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) for i, frust in enumerate(frust_types_corr)}
+color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
+                 for i, frust in enumerate(frust_types_corr)}
 
 # Add HoverTool
 hover_corr = HoverTool(
     tooltips=[
         ("Protein", "@Protein"),
         ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+        ("Spearman Rho", "@Rho{0.3f}")
     ],
     mode='mouse'
 )
@@ -1217,22 +1059,16 @@ p_corr_plot.line(
 
 # Add scatter glyphs
 legend_items = []
-print(f"Available frustration types: {frust_types_corr}")
-print(f"Data shape: {data_long_corr.shape}")
-print(f"Columns: {data_long_corr.columns}")
 
 for frust in frust_types_corr:
     if frust != "":  # Skip empty Frust_Type
         subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
-        print(f"Subset for {frust}: {len(subset)} rows")
         
         if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
-            print(f"Processing {frust} with {len(subset)} rows")
-            print(f"Sample data for {frust}:")
-            print(subset[['Protein', 'Rho', 'Frust_Type']].head())
-            
             # Ensure Protein is categorical with proper ordering
-            subset['Protein'] = pd.Categorical(subset['Protein'], categories=protein_order, ordered=True)
+            subset['Protein'] = pd.Categorical(subset['Protein'], 
+                                            categories=protein_order, 
+                                            ordered=True)
             # Sort by Protein to maintain order
             subset = subset.sort_values('Protein')
             source_subset = ColumnDataSource(subset)
@@ -1249,48 +1085,28 @@ for frust in frust_types_corr:
             legend_items.append((frust, [renderer]))
 
 if legend_items:
-    legend = Legend(items=legend_items, location="top_left", title="Frustration Type", click_policy="mute")
+    legend = Legend(items=legend_items, 
+                   location="top_left", 
+                   title="Frustration Type", 
+                   click_policy="mute")
     p_corr_plot.add_layout(legend)
 
-# Add mean lines for each frustration type
-for frust in frust_types_corr:
-    subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
-    if frust == "":
-        continue
-    mean_value = subset['Rho'].mean()
-
-    mean_source = ColumnDataSource(data=dict(
-        x=[-0.5, len(protein_order) - 0.5],
-        y=[mean_value, mean_value],
-        mean_value=[f"{mean_value:.3f}"] * 2,
-        frust_type=[frust] * 2
-    ))
-
-    mean_line = p_corr_plot.line(
-        'x', 'y', 
-        source=mean_source, 
-        color=color_map_corr[frust], 
-        line_dash='dashed',
-        name=f'mean_line_{frust}'
-    )
-
-    mean_hover = HoverTool(
-        renderers=[mean_line],
-        tooltips=[
-            ("Frustration Type", "@frust_type"),
-            ("Mean Correlation", "@mean_value")
-        ],
-        mode='mouse'
-    )
-    p_corr_plot.add_tools(mean_hover)
-
-p_corr_plot.legend.location = "top_left"
-p_corr_plot.legend.title = "Frustration Type"
-p_corr_plot.legend.click_policy = "mute"
-
-# Rotate x-axis labels to prevent overlapping
-from math import pi
+# Rotate x-axis labels
 p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+
+# Create layout for this section
+plot_controls = row(
+    sort_select,
+    sizing_mode="stretch_width",
+    name="plot_controls"
+)
+
+correlation_layout = column(
+    plot_controls,
+    p_corr_plot,
+    sizing_mode="stretch_width",
+    name="correlation_layout"
+)
 
 ###############################################################################
 # SECTION 8: UI Components and Static Content
