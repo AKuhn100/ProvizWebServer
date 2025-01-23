@@ -995,7 +995,7 @@ def create_violin_plot():
         mean_label = Label(
             x=data['mean'], 
             y=i,
-            text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
+            text=f"μ = {data['mean']:.3f}\n\nσ = {data['std']:.3f}",
             text_font_size='10pt',
             text_align='left',
             text_baseline='middle',  # Vertically center the text
