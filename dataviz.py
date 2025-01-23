@@ -919,31 +919,21 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # Dependencies: Sections 1-3
 # Required before: Layout assembly
 ###############################################################################
-from math import pi
+
+from math import pi  # Ensure pi is imported
 from scipy import stats
 import numpy as np
 from bokeh.plotting import figure
 from bokeh.models import Label, ColumnDataSource
-from bokeh.palettes import Category10
-from bokeh.io import show
-from bokeh.layouts import column, row
 
 def create_violin_plot():
-    """Create a sleek violin plot showing the distribution of correlations for each frustration type with embedded box plots."""
+    """Create a violin plot showing the distribution of correlations for each frustration type with embedded box plots."""
     # Prepare the data
     violin_data = []
     labels = {
         'ExpFrust.': 'Experimental',
         'AFFrust.': 'AlphaFold',
         'EvolFrust.': 'Evolutionary'
-    }
-    
-    # Define colors using Bokeh's Category10 palette for better aesthetics
-    palette = Category10[3]
-    FRUSTRATION_COLORS = {
-        'ExpFrust.': palette[0],
-        'AFFrust.': palette[1],
-        'EvolFrust.': palette[2]
     }
     
     # Collect data for each frustration type
@@ -977,17 +967,14 @@ def create_violin_plot():
         x_axis_label="Spearman Correlation Between Frustration and B-factor",
         y_axis_label="Frustration Metric",
         height=600,
-        width=800,  # Fixed width for better control over layout
-        sizing_mode="fixed",
+        sizing_mode="stretch_width",
         toolbar_location=None
     )
     
-    # Define box plot parameters for a sleeker look
-    box_height = 0.2       # Reduced height for the box
-    cap_size = 0.1         # Increased cap size for better visibility
-    median_line_width = 2  # Slightly thicker median line for emphasis
-    whisker_line_width = 1 # Thinner whisker lines
-    
+    # Define box plot parameters
+    box_height = 0.3  # Height of the box plot
+    cap_size = 0.05   # Size of the whisker caps
+
     # Plot violins and box plots
     for i, data in enumerate(violin_data):
         # Create source for violin curve
@@ -998,11 +985,11 @@ def create_violin_plot():
         
         # Plot violin
         color = FRUSTRATION_COLORS[data['frust_type']]
-        p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color=None)
+        p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color='black')
         
-        # Add mean line (optional, can be removed for sleeker look)
-        # p_violin.line([data['mean'], data['mean']], [i - 0.15, i + 0.15], 
-        #              line_color='black', line_width=1)
+        # Add mean line
+        p_violin.line([data['mean'], data['mean']], [i - 0.2, i + 0.2], 
+                     line_color='black', line_width=2)
         
         # Add text annotations with centered vertical alignment and right offset
         mean_label = Label(
@@ -1013,11 +1000,7 @@ def create_violin_plot():
             text_align='left',
             text_baseline='middle',  # Vertically center the text
             x_offset=5,              # Offset to the right by 5 pixels
-            y_offset=0,
-            background_fill_color="white",
-            background_fill_alpha=0.6,
-            text_color="black",
-            border_line_color=None
+            y_offset=0
         )
         p_violin.add_layout(mean_label)
         
@@ -1029,9 +1012,7 @@ def create_violin_plot():
             width=(data['q3'] - data['q1']),   # Width of the box (IQR)
             height=box_height,                 # Height of the box
             fill_color='white',
-            line_color='black',
-            line_width=1,
-            alpha=0.8
+            line_color='black'
         )
         
         # 2. Draw the median line
@@ -1041,10 +1022,10 @@ def create_violin_plot():
             x1=data['median'], 
             y1=i + box_height / 2, 
             line_color='black', 
-            line_width=median_line_width
+            line_width=2
         )
         
-        # 3. Draw whiskers (from Q1 to Min and Q3 to Max)
+        # 3. Draw the whiskers (from Q1 to Min and Q3 to Max)
         # Whisker from Q1 to Min
         p_violin.segment(
             x0=data['min'], 
@@ -1052,7 +1033,7 @@ def create_violin_plot():
             x1=data['q1'], 
             y1=i, 
             line_color='black', 
-            line_width=whisker_line_width
+            line_width=1
         )
         
         # Whisker from Q3 to Max
@@ -1062,46 +1043,36 @@ def create_violin_plot():
             x1=data['max'], 
             y1=i, 
             line_color='black', 
-            line_width=whisker_line_width
+            line_width=1
         )
         
         # 4. Draw whisker caps
         # Left cap at Min
         p_violin.segment(
             x0=data['min'], 
-            y0=i - cap_size/2, 
+            y0=i - cap_size, 
             x1=data['min'], 
-            y1=i + cap_size/2, 
+            y1=i + cap_size, 
             line_color='black', 
-            line_width=whisker_line_width
+            line_width=1
         )
         
         # Right cap at Max
         p_violin.segment(
             x0=data['max'], 
-            y0=i - cap_size/2, 
+            y0=i - cap_size, 
             x1=data['max'], 
-            y1=i + cap_size/2, 
+            y1=i + cap_size, 
             line_color='black', 
-            line_width=whisker_line_width
+            line_width=1
         )
 
-    # Customize plot aesthetics for a sleeker look
+    # Customize plot
     p_violin.yaxis.ticker = list(range(len(violin_data)))
     p_violin.yaxis.major_label_overrides = {i: data['label'] for i, data in enumerate(violin_data)}
     p_violin.grid.grid_line_color = None
     p_violin.background_fill_color = "#f8f9fa"
-    p_violin.outline_line_color = None
-    p_violin.xgrid.grid_line_color = "#dddddd"
-    p_violin.xgrid.grid_line_dash = [6, 4]
-    p_violin.axis.minor_tick_line_color = None
-    p_violin.axis.major_tick_line_color = "#444444"
-    p_violin.axis.axis_line_color = "#444444"
-    p_violin.axis.axis_label_text_font_style = "bold"
-    p_violin.axis.axis_label_text_font_size = "12pt"
-    p_violin.title.text_font_size = "14pt"
-    p_violin.title.text_font_style = "bold"
-
+    
     return p_violin
 
 # Initialize data source
