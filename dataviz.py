@@ -227,7 +227,7 @@ data_proviz['Spearman_Diff'] = (
     data_proviz['Spearman_ExpFrust']
 )
 
-# Sort protein names based on Spearman difference
+# Sort protein names based on Spearman_Diff
 protein_order = data_proviz.sort_values('Spearman_Diff')['Protein'].tolist()
 
 # Update data_long_avg and data_long_std to include ordered Protein categories
@@ -294,10 +294,10 @@ for col in required_cols:
         spearman_viz_data[col] = None
 
 # Combine table data with visualization data
-data_long_corr = pd.concat([
-    df_all_corr,
-    spearman_viz_data[required_cols]
-], ignore_index=True)
+# Adjusted to exclude empty DataFrames to prevent FutureWarning
+data_frames = [df_all_corr, spearman_viz_data[required_cols]]
+data_frames = [df for df in data_frames if not df.empty]
+data_long_corr = pd.concat(data_frames, ignore_index=True)
 
 # Remove rows with NaN correlations and ensure proper types
 data_long_corr = data_long_corr.dropna(subset=['Rho'])
@@ -962,7 +962,7 @@ def create_violin_plot():
                 'std': data.std(),
                 'label': labels[frust_type]
             })
-    
+
     # Define y-axis categories
     y_categories = [data['label'] for data in violin_data]
     
@@ -1059,20 +1059,22 @@ def create_violin_plot():
         source=df_box
     )
     
-    # Plot whisker caps
-    p_violin.circle(
+    # Plot whisker caps using scatter with size instead of deprecated circle()
+    p_violin.scatter(
         x='min', y='label',
         size=5,
         color='black',
         alpha=0.7,
-        source=df_box
+        source=df_box,
+        name='whisker_caps_min'
     )
-    p_violin.circle(
+    p_violin.scatter(
         x='max', y='label',
         size=5,
         color='black',
         alpha=0.7,
-        source=df_box
+        source=df_box,
+        name='whisker_caps_max'
     )
     
     # Customize y-axis to have categorical labels
@@ -1101,14 +1103,6 @@ p_violin = create_violin_plot()
 ###############################################################################
 
 from math import pi  # Import pi constant
-from scipy import stats
-
-# Initialize data source
-source_corr_plot = ColumnDataSource(data_long_corr)
-
-# Ensure protein_order is defined
-if 'protein_order' not in globals():
-    protein_order = []
 
 # Create sorting dropdown and callback
 def update_sort_order(attr, old, new):
@@ -1169,7 +1163,7 @@ sort_select.on_change('value', update_sort_order)
 p_corr_plot = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
     x_axis_label="Protein (ordered by selected metric)",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    y_axis_label="Spearman Correlation Between Frustration and B-factor",
     x_range=protein_order,
     sizing_mode='stretch_width',
     height=600,
