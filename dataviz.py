@@ -1254,14 +1254,51 @@ custom_styles = Div(text="""
 # IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
 ###############################################################################
 
+# Scatter Plots Layout
+scatter_col_exp = column(
+    p_scatter_exp, 
+    regression_info_exp, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
+scatter_col_af = column(
+    p_scatter_af, 
+    regression_info_af, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
+scatter_col_evol = column(
+    p_scatter_evol, 
+    regression_info_evol, 
+    sizing_mode="stretch_width",
+    styles={'flex': '1 1 350px', 'min-width': '350px'}
+)
+
+# Scatter plots row with consistent spacing
+scatter_row = row(
+    scatter_col_exp,
+    scatter_col_af,
+    scatter_col_evol,
+    sizing_mode="stretch_width",
+    styles={
+        'display': 'flex', 
+        'justify-content': 'space-between', 
+        'gap': '20px',
+        'width': '100%',
+        'margin': '20px auto',
+        'flex-wrap': 'wrap'
+    }
+)
+
 # Main visualization section
 visualization_section = column(
     unity_container,  # Unity iframe moved to the top
     select_file,
     window_slider,
     p,
+    scatter_row,     # Add scatter plots back
     correlation_layout,
-    p_violin,  # Add violin plot
+    p_violin,
     controls_section,
     controls_layout,
     data_table,
