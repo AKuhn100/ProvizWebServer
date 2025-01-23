@@ -321,15 +321,15 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 # SECTION 3: Main Visualization Components
 # 
 # This section contains:
-# - Main line plot setup
-# - Scatter plot configurations
-# - Common visualization elements (hover tools, legends, etc.)
+# A) Main line plot for normalized data
+# B) Scatter plots for rank correlations
+# C) Hover tools and info displays
 #
 # Dependencies: Sections 1-2
 # Required before: Callbacks and layout sections
 ###############################################################################
 
-# (A) Main Plot: Smoothed + Normalized Data
+# Initialize Data Sources
 source_plot = ColumnDataSource(data=dict(
     x=[],
     residue=[],
@@ -339,6 +339,11 @@ source_plot = ColumnDataSource(data=dict(
     evol_frust=[]
 ))
 
+source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
+source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
+source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
+
+# A) Main Line Plot
 p = figure(
     title="(No Data)",
     sizing_mode='stretch_width',
@@ -348,7 +353,7 @@ p = figure(
     active_scroll=None
 )
 
-# Define separate HoverTools for each metric
+# Main Plot Hover Tools
 hover_bf = HoverTool(
     renderers=[],
     tooltips=[("Index", "@x"), ("Residue", "@residue"), ("B-Factor", "@b_factor")],
@@ -374,13 +379,14 @@ p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
 p.xaxis.axis_label = "Residue Index"
 p.yaxis.axis_label = "Normalized Residue Flexibility / Frustration"
 
-# Add lines with consistent colors
+# Color definitions and line renderers
 color_map = {
     "b_factor":  ("B-Factor", "#FF7F00"),      # Orange
     "exp_frust": ("ExpFrust", "#E41A1C"),      # Red
     "af_frust":  ("AFFrust", "#377EB8"),       # Blue
     "evol_frust":("EvolFrust", "#4DAF4A")      # Green
 }
+
 renderers = {}
 for col_key, (label, col) in color_map.items():
     renderer = p.line(
@@ -402,51 +408,66 @@ p.legend.location = "top_left"
 p.legend.title = "Metrics"
 p.legend.click_policy = "hide"
 
-# (B) Scatter Plots (Experimental, AF, Evolutionary Frustration)
-# Scatter plots configuration with disabled wheel zoom by default
+# B) Scatter Plots
+hover_scatter = HoverTool(
+    tooltips=[
+        ("B-Factor", "@x_orig{0.3f}"),
+        ("B-Factor Rank", "@rank_x{0.0f}"),
+        ("Frustration", "@y_orig{0.3f}"),
+        ("Frustration Rank", "@rank_y{0.0f}")
+    ],
+    mode='mouse'
+)
+
 p_scatter_exp = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized Experimental Frustration",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="Experimental Frustration Rank",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    active_scroll=None
 )
+
 p_scatter_af = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized AlphaFold Frustration",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="AlphaFold Frustration Rank",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    active_scroll=None
 )
+
 p_scatter_evol = figure(
     sizing_mode="stretch_both",
     aspect_ratio=1,
     min_width=350,
     min_height=350,
     title="",
-    x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized Evolutionary Frustration",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="Evolutionary Frustration Rank",
     tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
     active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    active_scroll=None
 )
 
-# ColumnDataSources will now include normalized data
-source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
-source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
-source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
+# Add scatter glyphs and hover tools
+p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#E41A1C", alpha=0.7)   # Red
+p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#377EB8", alpha=0.7)    # Blue
+p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#4DAF4A", alpha=0.7) # Green
 
-# Create Div elements for regression info
+p_scatter_exp.add_tools(hover_scatter)
+p_scatter_af.add_tools(hover_scatter)
+p_scatter_evol.add_tools(hover_scatter)
+
+# C) Info Displays
 regression_info_exp = Div(
     text="", 
     styles={
@@ -461,6 +482,7 @@ regression_info_exp = Div(
     },
     sizing_mode="stretch_width"
 )
+
 regression_info_af = Div(
     text="",
     styles={
@@ -475,6 +497,7 @@ regression_info_af = Div(
     },
     sizing_mode="stretch_width"
 )
+
 regression_info_evol = Div(
     text="",
     styles={
@@ -489,11 +512,6 @@ regression_info_evol = Div(
     },
     sizing_mode="stretch_width"
 )
-
-# Initial scatter glyphs (empty) with consistent colors
-p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#E41A1C", alpha=0.7)   # Red
-p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#377EB8", alpha=0.7)    # Blue
-p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#4DAF4A", alpha=0.7) # Green
 
 ###############################################################################
 # SECTION 4: Callback Functions and Event Handlers
@@ -544,14 +562,15 @@ def min_max_normalize(arr):
         return np.zeros_like(arr)
 
 
-def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
+def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type="", 
+                               use_spearman=True, x_orig=None, y_orig=None):
     """
-    Adds a linear regression line and updates the regression info Div.
-    The plot_type parameter helps in uniquely naming the regression renderers.
+    Adds a regression line and updates the info Div.
+    For Spearman correlation, uses ranks and displays Spearman's rho.
     """
     if len(xvals) < 2 or np.all(xvals == xvals[0]):
         if info_div:
-            info_div.text = "Insufficient data for regression"
+            info_div.text = "Insufficient data for correlation"
         return
 
     not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
@@ -562,47 +581,54 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
 
     xvals_clean = xvals[not_nan]
     yvals_clean = yvals[not_nan]
+    
     if len(xvals_clean) < 2:
         if info_div:
-            info_div.text = "Insufficient data for regression"
+            info_div.text = "Insufficient data for correlation"
         return
 
-    # Linear regression
-    slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
+    if use_spearman and x_orig is not None and y_orig is not None:
+        # Calculate Spearman correlation from original values
+        rho, pval = spearmanr(x_orig, y_orig)
+        
+        # Use linear regression on ranks for the line
+        slope, intercept, _, _, _ = linregress(xvals_clean, yvals_clean)
+    else:
+        # Fall back to Pearson for line fitting
+        slope, intercept, r_value, pval, _ = linregress(xvals_clean, yvals_clean)
+        rho = r_value
 
-    # Plot regression line visibly
-    x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
+    # Plot regression line
+    x_range = np.linspace(0, 1, 100)  # Use [0,1] for normalized ranks
     y_range = slope * x_range + intercept
-    regression_line_name = f'regression_line_{plot_type}'
+    
     regression_line = fig.line(
         x_range, y_range, 
         line_width=2, line_dash='dashed', color=color, 
-        name=regression_line_name
+        name=f'regression_line_{plot_type}'
     )
 
-    # Create a separate data source for regression line hover
+    # Create hover source
     regression_source = ColumnDataSource(data=dict(
         x=x_range,
         y=y_range,
-        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
+        equation=[f"ρ = {rho:.3f}"] * len(x_range)
     ))
 
-    # Plot regression line again with this data source, invisible (for hover)
-    invisible_regression_name = f'regression_hover_{plot_type}'
     invisible_regression = fig.line(
         'x', 'y', 
         source=regression_source, 
         line_width=10, 
         alpha=0, 
-        name=invisible_regression_name
+        name=f'regression_hover_{plot_type}'
     )
 
-    # Update regression info div with equation
+    # Update regression info div
     if info_div:
         info_div.text = f"""
         <div style='color: {color}'>
-            <strong>y = {slope:.3f}x + {intercept:.3f}</strong><br>
-            <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
+            <strong>Spearman ρ = {rho:.3f}</strong><br>
+            <span style='font-size: 12px'>p = {pval:.2e}</span>
         </div>
         """
 
@@ -613,10 +639,11 @@ def update_plot(attr, old, new):
     """
     filename = select_file.value
     if filename not in data_by_file:
+        # Reset all data sources if file not found
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[])
         p.title.text = "(No Data)"
         p_scatter_exp.title.text = ""
         p_scatter_af.title.text = ""
@@ -629,40 +656,33 @@ def update_plot(attr, old, new):
     # Get window size from slider
     window_size = window_slider.value
 
-    # Update main line plot with new window size
+    # Update main line plot with normalized data
     df_orig = data_by_file[filename]["df_original"]
     df_plot = df_orig.copy()
 
-    # Apply moving average with current window size
+    # Apply moving average
     for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
         arr = df_plot[col].values
         df_plot[col] = moving_average(arr, window_size=window_size)
+        df_plot[col] = min_max_normalize(df_plot[col])
 
-    # Normalize the smoothed data
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue
-        df_plot[col] = min_max_normalize(arr)
-
+    # Update main plot
     sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = f"{filename} (No valid rows)."
     else:
-        new_data = dict(
-            x=sub_plot["AlnIndex"].tolist(),
-            residue=sub_plot["Residue"].tolist(),
-            b_factor=sub_plot["B_Factor"].tolist(),
-            exp_frust=sub_plot["ExpFrust"].tolist(),
-            af_frust=sub_plot["AFFrust"].tolist(),
-            evol_frust=sub_plot["EvolFrust"].tolist()
-        )
-        source_plot.data = new_data
+        source_plot.data = {
+            'x': sub_plot["AlnIndex"].tolist(),
+            'residue': sub_plot["Residue"].tolist(),
+            'b_factor': sub_plot["B_Factor"].tolist(),
+            'exp_frust': sub_plot["ExpFrust"].tolist(),
+            'af_frust': sub_plot["AFFrust"].tolist(),
+            'evol_frust': sub_plot["EvolFrust"].tolist()
+        }
         p.title.text = f"{filename} (Smoothed + Normalized)"
 
-    # Update scatter plots (using NON-smoothed data)
+    # Update scatter plots
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
 
@@ -671,41 +691,49 @@ def update_plot(attr, old, new):
     remove_regression_renderers(p_scatter_af)
     remove_regression_renderers(p_scatter_evol)
 
-    # Reset data sources
-    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-
-    regression_info_exp.text = ""
-    regression_info_af.text = ""
-    regression_info_evol.text = ""
-
     if sub_orig.empty:
         p_scatter_exp.title.text = f"{filename} (No Data)"
         p_scatter_af.title.text = f"{filename} (No Data)"
         p_scatter_evol.title.text = f"{filename} (No Data)"
     else:
-        # Update scatter plots with normalized data using consistent colors
+        # Update scatter plots with rank-based data
         for metric, source, plot, info, color in [
-            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, "#E41A1C"),  # Red
-            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, "#377EB8"),      # Blue
-            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, "#4DAF4A")  # Green
+            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, "#E41A1C"),
+            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, "#377EB8"),
+            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, "#4DAF4A")
         ]:
             x_orig = sub_orig["B_Factor"].values
             y_orig = sub_orig[metric].values
-            x_norm = min_max_normalize(x_orig)
-            y_norm = min_max_normalize(y_orig)
             
-            source.data = dict(x=x_norm, y=y_norm, x_orig=x_orig, y_orig=y_orig)
+            # Calculate ranks
+            rank_x = pd.Series(x_orig).rank()
+            rank_y = pd.Series(y_orig).rank()
+            
+            # Normalize ranks to [0, 1]
+            rank_x_norm = (rank_x - rank_x.min()) / (rank_x.max() - rank_x.min())
+            rank_y_norm = (rank_y - rank_y.min()) / (rank_y.max() - rank_y.min())
+            
+            source.data = {
+                'x': rank_x_norm,
+                'y': rank_y_norm,
+                'x_orig': x_orig,
+                'y_orig': y_orig,
+                'rank_x': rank_x,
+                'rank_y': rank_y
+            }
+            
             plot.title.text = f"{filename} {metric}"
             
             add_regression_line_and_info(
                 fig=plot, 
-                xvals=x_norm,
-                yvals=y_norm, 
+                xvals=rank_x_norm,
+                yvals=rank_y_norm, 
                 color=color, 
                 info_div=info,
-                plot_type=metric.lower()
+                plot_type=metric.lower(),
+                use_spearman=True,
+                x_orig=x_orig,
+                y_orig=y_orig
             )
 
 
