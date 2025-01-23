@@ -898,14 +898,55 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 if 'protein_order' not in globals():
     protein_order = []
 
-# Create sorting button
+# Create sorting button and callback
+def update_sort_order(attr, old, new):
+    """Update plot order when sort selection changes"""
+    selected_metric = sort_select.value
+    print(f"Sorting by: {selected_metric}")  # Debug print
+
+    if selected_metric == "Spearman Diff":
+        # Sort by Spearman difference
+        sorted_data = data_proviz.sort_values('Spearman_Diff')
+        new_order = sorted_data['Protein'].tolist()
+    else:
+        # Sort by the selected metric's correlation values
+        metric_data = data_long_corr[data_long_corr['Frust_Type'] == selected_metric]
+        sorted_data = metric_data.sort_values('Rho')
+        new_order = sorted_data['Protein'].tolist()
+    
+    print(f"New order: {new_order}")  # Debug print
+    
+    # Update the plot's x-range
+    p_corr_plot.x_range.factors = new_order
+
+    # Update each renderer's data source
+    for frust in frust_types_corr:
+        if frust != "":
+            subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+            if not subset.empty:
+                # Reset the categorical order
+                subset['Protein'] = pd.Categorical(subset['Protein'], 
+                                                categories=new_order, 
+                                                ordered=True)
+                subset = subset.sort_values('Protein')
+                renderer = next(r for r in p_corr_plot.renderers 
+                             if isinstance(r, GlyphRenderer) and 
+                             r.name == f'scatter_{frust}')
+                renderer.data_source.data.update({
+                    'Protein': subset['Protein'].tolist(),
+                    'Rho': subset['Rho'].tolist(),
+                    'Frust_Type': subset['Frust_Type'].tolist()
+                })
+
 sort_select = Select(
     title="Sort Proteins By:",
     value="Spearman Diff",
     options=["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."],
-    width=200,
-    name="sort_select"  # Add name for easier reference
+    width=200
 )
+
+# Attach the callback
+sort_select.on_change('value', update_sort_order)
 
 # Spearman Rho per Protein and Frustration Metric
 p_corr_plot = figure(
