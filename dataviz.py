@@ -972,8 +972,8 @@ def create_violin_plot():
     )
     
     # Define box plot parameters
-    box_height = 0.3  # Height of the box plot
-    cap_size = 0.05   # Size of the whisker caps
+    box_height = 0.05  # Height of the box plot
+    cap_size = 0.00   # Size of the whisker caps
 
     # Plot violins and box plots
     for i, data in enumerate(violin_data):
