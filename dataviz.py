@@ -318,80 +318,200 @@ FRUSTRATION_COLORS["Spearman_Diff"] = Category10[10][4]  # Orange color for diff
 source_corr_plot = ColumnDataSource(data_long_corr)
 
 ###############################################################################
-# SECTION 9: Final Layout Assembly
+# SECTION 3: Main Visualization Components
 # 
 # This section contains:
-# - Final layout configuration
-# - Component assembly
-# - Document setup
+# A) Main line plot for normalized data
+# B) Scatter plots for rank correlations
+# C) Hover tools and info displays
 #
-# Dependencies: All previous sections must be fully loaded
-# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
+# Dependencies: Sections 1-2
+# Required before: Callbacks and layout sections
 ###############################################################################
 
-# Scatter Plots Layout
-scatter_col_exp = column(
-    p_scatter_exp, 
-    regression_info_exp, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_af = column(
-    p_scatter_af, 
-    regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_evol = column(
-    p_scatter_evol, 
-    regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
+# Initialize Data Sources
+source_plot = ColumnDataSource(data=dict(
+    x=[],
+    residue=[],
+    b_factor=[],
+    exp_frust=[],
+    af_frust=[],
+    evol_frust=[]
+))
 
-# Scatter plots row with consistent spacing
-scatter_row = row(
-    scatter_col_exp,
-    scatter_col_af,
-    scatter_col_evol,
-    sizing_mode="stretch_width",
-    styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
-        'gap': '20px',
-        'width': '100%',
-        'margin': '20px auto',
-        'flex-wrap': 'wrap'
-    }
-)
+source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
+source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
+source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[]))
 
-# Main visualization section
-visualization_section = column(
-    unity_container,  # Unity iframe moved to the top
-    select_file,
-    window_slider,
-    p,
-    scatter_row,     # Add scatter plots back
-    correlation_layout,
-    p_violin,
-    controls_section,
-    controls_layout,
-    data_table,
+# A) Main Line Plot
+p = figure(
+    title="(No Data)",
     sizing_mode='stretch_width',
-    css_classes=['visualization-section']
+    height=600,
+    tools=["pan","box_zoom","wheel_zoom","reset","save"],
+    active_drag="box_zoom", 
+    active_scroll=None
 )
 
-# Main layout assembly
-main_layout = column(
-    custom_styles,
-    header,
-    visualization_section,
-    sizing_mode='stretch_width'
+# Main Plot Hover Tools
+hover_bf = HoverTool(
+    renderers=[],
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("B-Factor", "@b_factor")],
+    name="hover_b_factor"
+)
+hover_ef = HoverTool(
+    renderers=[],
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("ExpFrust", "@exp_frust")],
+    name="hover_exp_frust"
+)
+hover_af = HoverTool(
+    renderers=[],
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("AFFrust", "@af_frust")],
+    name="hover_af_frust"
+)
+hover_ev = HoverTool(
+    renderers=[],
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("EvolFrust", "@evol_frust")],
+    name="hover_evol_frust"
 )
 
-# Set up document
-curdoc().add_root(main_layout)
-curdoc().title = "Evolutionary Frustration"
+p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
+p.xaxis.axis_label = "Residue Index"
+p.yaxis.axis_label = "Normalized Residue Flexibility / Frustration"
+
+# Color definitions and line renderers
+color_map = {
+    "b_factor":  ("B-Factor", "#FF7F00"),      # Orange
+    "exp_frust": ("ExpFrust", "#E41A1C"),      # Red
+    "af_frust":  ("AFFrust", "#377EB8"),       # Blue
+    "evol_frust":("EvolFrust", "#4DAF4A")      # Green
+}
+
+renderers = {}
+for col_key, (label, col) in color_map.items():
+    renderer = p.line(
+        x="x", y=col_key, source=source_plot,
+        line_width=2, alpha=0.7, color=col,
+        legend_label=label
+    )
+    renderers[col_key] = renderer
+    if col_key == "b_factor":
+        hover_bf.renderers.append(renderer)
+    elif col_key == "exp_frust":
+        hover_ef.renderers.append(renderer)
+    elif col_key == "af_frust":
+        hover_af.renderers.append(renderer)
+    elif col_key == "evol_frust":
+        hover_ev.renderers.append(renderer)
+
+p.legend.location = "top_left"
+p.legend.title = "Metrics"
+p.legend.click_policy = "hide"
+
+# B) Scatter Plots
+hover_scatter = HoverTool(
+    tooltips=[
+        ("B-Factor", "@x_orig{0.3f}"),
+        ("B-Factor Rank", "@rank_x{0.0f}"),
+        ("Frustration", "@y_orig{0.3f}"),
+        ("Frustration Rank", "@rank_y{0.0f}")
+    ],
+    mode='mouse'
+)
+
+p_scatter_exp = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
+    title="",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="Experimental Frustration Rank",
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+p_scatter_af = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
+    title="",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="AlphaFold Frustration Rank",
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+p_scatter_evol = figure(
+    sizing_mode="stretch_both",
+    aspect_ratio=1,
+    min_width=350,
+    min_height=350,
+    title="",
+    x_axis_label="B-Factor Rank",
+    y_axis_label="Evolutionary Frustration Rank",
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    active_drag="box_zoom",
+    active_scroll=None
+)
+
+# Add scatter glyphs and hover tools
+p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#E41A1C", alpha=0.7)   # Red
+p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#377EB8", alpha=0.7)    # Blue
+p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#4DAF4A", alpha=0.7) # Green
+
+p_scatter_exp.add_tools(hover_scatter)
+p_scatter_af.add_tools(hover_scatter)
+p_scatter_evol.add_tools(hover_scatter)
+
+# C) Info Displays
+regression_info_exp = Div(
+    text="", 
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '14px',
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
+)
+
+regression_info_af = Div(
+    text="",
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '14px',
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
+)
+
+regression_info_evol = Div(
+    text="",
+    styles={
+        'background-color': '#f8f9fa',
+        'padding': '10px',
+        'border': '1px solid #ddd',
+        'border-radius': '4px',
+        'margin-top': '10px',
+        'font-size': '14px',
+        'text-align': 'center',
+        'width': '100%'
+    },
+    sizing_mode="stretch_width"
+)
 
 ###############################################################################
 # SECTION 4: Callback Functions and Event Handlers
