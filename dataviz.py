@@ -988,6 +988,102 @@ p_violin = create_violin_plot()
 ###############################################################################
 
 from math import pi  # Add import for pi constant
+from scipy import stats
+
+def create_violin_plot():
+    """Create a violin plot showing the distribution of correlations for each frustration type"""
+    # Prepare the data
+    violin_data = []
+    labels = {
+        'ExpFrust.': 'Experimental',
+        'AFFrust.': 'AlphaFold',
+        'EvolFrust.': 'Evolutionary'
+    }
+    
+    # Collect data for each frustration type
+    for frust_type in ['ExpFrust.', 'AFFrust.', 'EvolFrust.']:
+        data = data_long_corr[data_long_corr['Frust_Type'] == frust_type]['Rho']
+        
+        if not data.empty:
+            # Calculate violin curve using kernel density estimation
+            kernel = stats.gaussian_kde(data)
+            x_range = np.linspace(data.min(), data.max(), 100)
+            y_range = kernel(x_range)
+            
+            # Mirror the density curve
+            violin_data.append({
+                'x': np.concatenate([x_range, x_range[::-1]]),
+                'y': np.concatenate([y_range, -y_range[::-1]]),
+                'frust_type': frust_type,
+                'mean': data.mean(),
+                'std': data.std(),
+                'label': labels[frust_type]
+            })
+
+    # Create violin plot
+    p_violin = figure(
+        title="Distribution of Spearman Correlations by Frustration Type",
+        x_axis_label="Spearman Correlation Between Frustration and B-factor",
+        y_axis_label="Frustration Metric",
+        height=500,  # Increased height
+        sizing_mode="stretch_width",
+        toolbar_location=None,
+        y_range=(-0.5, 2.5)  # Expanded y-range
+    )
+    
+    # Plot violins
+    for i, data in enumerate(violin_data):
+        # Create source for violin curve
+        source = ColumnDataSource({
+            'x': data['x'],
+            'y': [i + y/4 for y in data['y']],  # Reduced scaling factor for less overlap
+        })
+        
+        # Plot violin
+        color = FRUSTRATION_COLORS[data['frust_type']]
+        p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color='black')
+        
+        # Add mean line
+        p_violin.line([data['mean'], data['mean']], [i-0.2, i+0.2], 
+                     line_color='black', line_width=2)
+        
+        # Add text annotations
+        mean_label = Label(
+            x=data['mean'], y=i,
+            text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
+            text_font_size='10pt',
+            text_align='left',
+            y_offset=10
+        )
+        p_violin.add_layout(mean_label)
+
+    # Customize plot
+    p_violin.yaxis.ticker = list(range(len(violin_data)))
+    p_violin.yaxis.major_label_overrides = {i: data['label'] for i, data in enumerate(violin_data)}
+    p_violin.grid.grid_line_color = None
+    p_violin.background_fill_color = "#f8f9fa"
+    
+    return p_violin
+
+# Initialize data source
+source_corr_plot = ColumnDataSource(data_long_corr)
+
+# Create violin plot
+p_violin = create_violin_plot()
+
+# Rest of the additional plots code...
+###############################################################################
+# SECTION 7: Additional Visualization Components
+# 
+# This section contains:
+# - Correlation plots with sorting functionality
+# - Summary statistics
+#
+# Dependencies: Sections 1-3
+# Required before: Layout assembly
+###############################################################################
+
+from math import pi  # Add import for pi constant
 
 # Initialize data source
 source_corr_plot = ColumnDataSource(data_long_corr)
