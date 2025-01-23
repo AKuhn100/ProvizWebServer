@@ -1246,6 +1246,9 @@ unity_container = column(
     description_visualizer,
     unity_iframe,
     sizing_mode='stretch_width'
+    styles={
+        'justify-content': 'center'
+    }
 )
 
 # Note: File selection and window slider widgets are defined in Section 4 (Callbacks)
