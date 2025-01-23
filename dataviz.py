@@ -913,15 +913,16 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # SECTION 7: Additional Visualization Components
 # 
 # This section contains:
-# - Correlation plots with sorting functionality
-# - Summary statistics
+# - Violin plot with overlaid box plots showing the distribution of Spearman
+#   correlations for each frustration type
+# - Box plot statistics and plotting
 #
 # Dependencies: Sections 1-3
 # Required before: Layout assembly
 ###############################################################################
 
-from math import pi  # Add import for pi constant
 from scipy import stats
+from bokeh.models import Label
 
 def create_violin_plot():
     """Create a violin plot with overlaid box plots showing the distribution of correlations for each frustration type."""
@@ -980,9 +981,9 @@ def create_violin_plot():
     for i, data in enumerate(violin_data):
         y_center = data['label']
         patch_x = data['x']
-        patch_y = [y_center + y for y in data['y'][:len(data['x'])]]  # Upper half
+        patch_y = [i + y for y in data['y'][:len(data['x'])]]  # Upper half
         patch_x_reverse = data['x'][::-1]
-        patch_y_reverse = [y_center - y for y in data['y'][::-1]]  # Lower half
+        patch_y_reverse = [i - y for y in data['y'][::-1]]  # Lower half
         
         # Plot the violin using patch
         p_violin.patch(
@@ -1006,7 +1007,7 @@ def create_violin_plot():
         
         # Add text annotations for mean and std
         mean_label = Label(
-            x=data['mean'], y=y_center,
+            x=data['mean'], y=i,
             text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
             text_font_size='10pt',
             text_align='left',
@@ -1022,9 +1023,10 @@ def create_violin_plot():
     p_violin.quad(
         top='q3',
         bottom='q1',
-        left=df_box['median'] - 0.1,  # Slightly smaller width
-        right=df_box['median'] + 0.1,
-        source=df_box,
+        left='median_minus',
+        right='median_plus',
+        source=df_box.assign(median_minus=lambda df: df['median'] - 0.05,  # Adjust box width as needed
+                            median_plus=lambda df: df['median'] + 0.05),
         fill_color='white',
         line_color='black',
         line_width=1.5,
@@ -1033,39 +1035,44 @@ def create_violin_plot():
     
     # Plot Median Lines
     p_violin.segment(
-        x0=df_box['q1'], y0=df_box['label'],
-        x1=df_box['q3'], y1=df_box['label'],
+        x0='q1', y0='label',
+        x1='q3', y1='label',
         line_color='black',
-        line_width=2
+        line_width=2,
+        source=df_box
     )
     
     # Plot whiskers
     p_violin.segment(
-        x0=df_box['min'], y0=df_box['label'],
-        x1=df_box['q1'], y1=df_box['label'],
+        x0='min', y0='label',
+        x1='q1', y1='label',
         line_color='black',
-        line_width=1
+        line_width=1,
+        source=df_box
     )
     
     p_violin.segment(
-        x0=df_box['q3'], y0=df_box['label'],
-        x1=df_box['max'], y1=df_box['label'],
+        x0='q3', y0='label',
+        x1='max', y1='label',
         line_color='black',
-        line_width=1
+        line_width=1,
+        source=df_box
     )
     
     # Plot whisker caps
     p_violin.circle(
-        x=df_box['min'], y=df_box['label'],
+        x='min', y='label',
         size=5,
         color='black',
-        alpha=0.7
+        alpha=0.7,
+        source=df_box
     )
     p_violin.circle(
-        x=df_box['max'], y=df_box['label'],
+        x='max', y='label',
         size=5,
         color='black',
-        alpha=0.7
+        alpha=0.7,
+        source=df_box
     )
     
     # Customize y-axis to have categorical labels
@@ -1078,18 +1085,23 @@ def create_violin_plot():
     p_violin.legend.click_policy = "hide"
     
     return p_violin
+
+# Create violin plot with box plots
+p_violin = create_violin_plot()
+
 ###############################################################################
-# SECTION 7: Additional Visualization Components
+# SECTION 8: Correlation Plots and Sorting Functionality
 # 
 # This section contains:
 # - Correlation plots with sorting functionality
 # - Summary statistics
 #
-# Dependencies: Sections 1-3
+# Dependencies: Sections 1-7
 # Required before: Layout assembly
 ###############################################################################
 
-from math import pi  # Add import for pi constant
+from math import pi  # Import pi constant
+from scipy import stats
 
 # Initialize data source
 source_corr_plot = ColumnDataSource(data_long_corr)
@@ -1098,7 +1110,7 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 if 'protein_order' not in globals():
     protein_order = []
 
-# Create sorting button and callback
+# Create sorting dropdown and callback
 def update_sort_order(attr, old, new):
     """Update plot order when sort selection changes"""
     selected_metric = sort_select.value
@@ -1129,15 +1141,20 @@ def update_sort_order(attr, old, new):
                                                 categories=new_order, 
                                                 ordered=True)
                 subset = subset.sort_values('Protein')
-                renderer = next(r for r in p_corr_plot.renderers 
-                             if isinstance(r, GlyphRenderer) and 
-                             r.name == f'scatter_{frust}')
-                renderer.data_source.data.update({
-                    'Protein': subset['Protein'].tolist(),
-                    'Rho': subset['Rho'].tolist(),
-                    'Frust_Type': subset['Frust_Type'].tolist()
-                })
+                renderer = next(
+                    (r for r in p_corr_plot.renderers 
+                     if isinstance(r, GlyphRenderer) and 
+                     r.name == f'scatter_{frust}'), 
+                    None
+                )
+                if renderer:
+                    renderer.data_source.data.update({
+                        'Protein': subset['Protein'].tolist(),
+                        'Rho': subset['Rho'].tolist(),
+                        'Frust_Type': subset['Frust_Type'].tolist()
+                    })
 
+# Dropdown for sorting
 sort_select = Select(
     title="Sort Proteins By:",
     value="Spearman Diff",
@@ -1238,119 +1255,6 @@ correlation_layout = column(
     sizing_mode="stretch_width",
     name="correlation_layout"
 )
-
-# Create violin plot with box plots
-p_violin = create_violin_plot()
-
-
-###############################################################################
-# SECTION 8: UI Components and Static Content
-# 
-# This section contains:
-# - Header and description components
-# - Unity container and instructions
-# - Static UI elements and styles
-#
-# Dependencies: Sections 1-2, plus data structures from data-processing
-# Required before: Layout assembly
-###############################################################################
-
-# Add header and description
-header = Div(text="""
-    <h1>Evolutionary Frustration</h1>
-    <p>
-        Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores 
-        and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. 
-        By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics, 
-        we aim to validate sequence-derived evolutionary constraints in representing protein flexibility.
-    </p>
-    <ul>
-        <li><strong>Experimental Frustration</strong>: Derived via the Frustratometer using a crystal structure.</li>
-        <li><strong>AF Frustration</strong>: Derived via the Frustratometer using an AlphaFold structure.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived directly from sequence alignment (no structure needed).</li>
-    </ul>
-    <p>
-        The correlation table below shows Spearman correlation coefficients and p-values for <em>non-smoothed</em> data. 
-        The curves in the main plot are <em>smoothed</em> with a simple moving average and 
-        <strong>min–max normalized</strong> (per protein). Normalization does not affect Spearman correlations but be mindful 
-        that min–max scaling is not suitable for comparing magnitudes <em>across</em> proteins.
-    </p>
-    <h3>Contributors</h3>
-    <p>
-        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, 
-        George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
-        <sup>1</sup>Department of Physics, Rice University<br>
-        <sup>2</sup>Department of Chemistry, Rice University<br>
-        <sup>3</sup>Department of Biosciences, Rice University<br>
-        <sup>4</sup>Center for Theoretical Biological Physics, Rice University
-    </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
-
-# Unity Container
-description_visualizer = Div(text="""
-    <h2>Protein Visualizer Instructions</h2>
-    <p>
-        The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
-    </p>
-    <ul>
-        <li><strong>Oscillation (O):</strong> Ribbon oscillates with amplitude/frequency mapped to average B-factor.</li>
-        <li><strong>Color (ExpFrust):</strong> Ribbon color indicates experimental frustration.</li>
-        <li><strong>Luminosity (EvolFrust):</strong> Indicates evolutionary frustration.</li>
-        <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
-        <li><strong>Navigation:</strong> <code>W/A/S/D</code>, <code>Shift</code>, <code>Space</code> to move the camera, <code>C</code> to zoom, etc.</li>
-        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. <code>O</code> toggles oscillation or sets height by B-factor in the unfolded state.</li>
-        <li><strong>Pause (P):</strong> Pauses the scene so you can select another protein.</li>
-    </ul>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
-
-unity_iframe = Div(
-    text="""
-    <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px auto; max-width: 1200px;">
-        <iframe 
-            src="https://igotintogradschool2025.site/unity/"
-            style="width: 100%; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
-                   box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
-        </iframe>
-    </div>
-    """,
-    sizing_mode='stretch_width',
-    styles={
-        'margin-top': '20px',
-        'display': 'flex',
-        'justify-content': 'center'
-    }
-)
-unity_iframe.visible = True
-
-unity_container = column(
-    description_visualizer,
-    unity_iframe,
-    sizing_mode='stretch_width'
-)
-
-# Note: File selection and window slider widgets are defined in Section 4 (Callbacks)
-
-# Controls section
-controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
-
-# Custom styles
-custom_styles = Div(text="""
-    <style>
-        .visualization-section {
-            margin: 20px 0;
-            width: 100%;
-        }
-        .controls-row {
-            margin: 10px 0;
-            gap: 10px;
-        }
-        .bk-root {
-            width: 100% !important;
-        }
-    </style>
-""")
 
 ###############################################################################
 # SECTION 9: Final Layout Assembly
