@@ -968,7 +968,7 @@ def create_violin_plot():
         # Create source for violin curve
         source = ColumnDataSource({
             'x': data['x'],
-            'y': [i + y/3 for y in data['y']],  # Scale and shift the density curve
+            'y': [i + y/10 for y in data['y']],  # Scale and shift the density curve
         })
         
         # Plot violin
@@ -1003,7 +1003,7 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 # Create violin plot
 p_violin = create_violin_plot()
 
-# Rest of the additional plots code...
+
 ###############################################################################
 # SECTION 7: Additional Visualization Components
 # 
