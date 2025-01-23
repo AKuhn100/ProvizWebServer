@@ -882,119 +882,6 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # SECTION 7: Additional Visualization Components
 # 
 # This section contains:
-# - Additional statistical plots
-# - Aggregate visualizations
-# - Correlation plots
-#
-# Dependencies: Sections 1-3
-# Required before: Layout assembly
-###############################################################################
-
-# Initialize data sources with empty data if necessary
-if data_long_avg.empty:
-    data_long_corr = pd.DataFrame(columns=['Test', 'MetricA', 'MetricB', 'Rho', 'Pval', 'Frust_Type', 'Protein'])
-
-# Create data sources
-source_corr_plot = ColumnDataSource(data_long_corr)
-
-# Ensure protein_order is defined
-if 'protein_order' not in globals():
-    protein_order = []
-
-# Create sorting button
-sort_options = ["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."]
-sort_select = Select(
-    title="Sort Proteins By:",
-    value="Spearman Diff",
-    options=sort_options,
-    width=200
-)
-
-# (H) Spearman Rho per Protein and Frustration Metric
-p_corr_plot = figure(
-    title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-    x_range=protein_order,
-    sizing_mode='stretch_width',
-    height=600,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None,
-    toolbar_location="above"
-)
-
-# Define color palette for Frustration Types
-frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
-palette_corr = Category10[max(3, len(frust_types_corr))]
-color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) for i, frust in enumerate(frust_types_corr)}
-
-# Add HoverTool
-hover_corr = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Rho{0.3f}")
-    ],
-    mode='mouse'
-)
-p_corr_plot.add_tools(hover_corr)
-
-# Add horizontal line at y=0
-p_corr_plot.line(
-    x=[-0.5, len(protein_order) - 0.5], 
-    y=[0, 0], 
-    line_width=1, 
-    line_dash='dashed', 
-    color='gray', 
-    name='y_zero_line'
-)
-
-# Add scatter glyphs
-legend_items = []
-print(f"Available frustration types: {frust_types_corr}")
-print(f"Data shape: {data_long_corr.shape}")
-print(f"Columns: {data_long_corr.columns}")
-
-for frust in frust_types_corr:
-    if frust != "":  # Skip empty Frust_Type
-        subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
-        print(f"Subset for {frust}: {len(subset)} rows")
-        
-        if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
-            print(f"Processing {frust} with {len(subset)} rows")
-            print(f"Sample data for {frust}:")
-            print(subset[['Protein', 'Rho', 'Frust_Type']].head())
-            
-            # Ensure Protein is categorical with proper ordering
-            subset['Protein'] = pd.Categorical(subset['Protein'], categories=protein_order, ordered=True)
-            # Sort by Protein to maintain order
-            subset = subset.sort_values('Protein')
-            source_subset = ColumnDataSource(subset)
-            
-            renderer = p_corr_plot.scatter(
-                x='Protein',
-                y='Rho',
-                source=source_subset,
-                color=color_map_corr[frust],
-                size=8,
-                alpha=0.6,
-                name=f'scatter_{frust}'
-            )
-            legend_items.append((frust, [renderer]))
-
-if legend_items:
-    legend = Legend(items=legend_items, location="top_left", title="Frustration Type", click_policy="mute")
-    p_corr_plot.add_layout(legend)
-
-# Rotate x-axis labels to prevent overlapping
-from math import pi
-p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
-
-###############################################################################
-# SECTION 7: Additional Visualization Components
-# 
-# This section contains:
 # - Correlation plots with sorting functionality
 # - Summary statistics
 #
@@ -1014,13 +901,14 @@ sort_select = Select(
     title="Sort Proteins By:",
     value="Spearman Diff",
     options=["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."],
-    width=200
+    width=200,
+    name="sort_select"  # Add name for easier reference
 )
 
 # Spearman Rho per Protein and Frustration Metric
 p_corr_plot = figure(
     title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein (click legend to show/hide metrics)",
+    x_axis_label="Protein (ordered by selected metric)",
     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
     x_range=protein_order,
     sizing_mode='stretch_width',
