@@ -965,16 +965,24 @@ def create_violin_plot():
     # Define y-axis categories
     y_categories = [data['label'] for data in violin_data]
     
-    # Create violin plot with categorical y-axis
-    p_violin = figure(
-        title="Distribution of Spearman Correlations by Frustration Type",
-        x_axis_label="Spearman Correlation Between Frustration and B-factor",
-        y_axis_label="Frustration Metric",
-        y_range=y_categories,
-        height=600,
-        sizing_mode="stretch_width",
-        toolbar_location=None
-    )
+# Create violin plot with box plots
+p_violin = create_violin_plot()
+
+# Add violin plot to the layout
+visualization_section = column(
+    unity_container,  # Unity iframe moved to the top
+    select_file,
+    window_slider,
+    p,
+    scatter_row,       # Add scatter plots back
+    correlation_layout,
+    p_violin,          # Add the updated violin plot
+    controls_section,
+    controls_layout,
+    data_table,
+    sizing_mode='stretch_width',
+    css_classes=['visualization-section']
+)
     
     # Plot each violin centered on its category
     for i, data in enumerate(violin_data):
@@ -1078,7 +1086,6 @@ def create_violin_plot():
     p_violin.legend.click_policy = "hide"
     
     return p_violin
-    
 ###############################################################################
 # SECTION 7: Additional Visualization Components
 # 
