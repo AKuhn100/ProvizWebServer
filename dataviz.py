@@ -1231,7 +1231,6 @@ visualization_section = column(
     select_file,
     window_slider,
     p,
-    scatter_row,
     correlation_layout,
     create_bar_plot_with_sd(data_proviz),
     sizing_mode='stretch_width',
