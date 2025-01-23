@@ -1227,10 +1227,10 @@ description_visualizer = Div(text="""
 
 unity_iframe = Div(
     text="""
-    <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
+    <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px auto; max-width: 1200px;">
         <iframe 
             src="https://igotintogradschool2025.site/unity/"
-            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
+            style="width: 100%; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
             allowfullscreen>
@@ -1238,7 +1238,11 @@ unity_iframe = Div(
     </div>
     """,
     sizing_mode='stretch_width',
-    styles={'margin-top': '20px'}
+    styles={
+        'margin-top': '20px',
+        'display': 'flex',
+        'justify-content': 'center'
+    }
 )
 unity_iframe.visible = True
 
