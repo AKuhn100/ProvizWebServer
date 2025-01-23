@@ -513,6 +513,20 @@ regression_info_evol = Div(
     }
 )
 
+# D) Unity Container for Embedding External Content
+unity_container = Div(
+    text="""
+    <iframe src="http://your-unity-app-url" width="800" height="600" frameborder="0" allowfullscreen>
+        Your browser does not support iframes.
+    </iframe>
+    """,
+    sizing_mode='stretch_width',
+    styles={
+        'text-align': 'center',
+        'margin-bottom': '20px'
+    }
+)
+
 ###############################################################################
 # SECTION 4: Callback Functions and Event Handlers
 # 
@@ -1252,7 +1266,7 @@ correlation_layout = column(
 
 ###############################################################################
 # SECTION 9: Final Layout Assembly
-# 
+#
 # This section contains:
 # - Final layout configuration
 # - Component assembly
@@ -1318,13 +1332,13 @@ scatter_row = row(
 
 # Main visualization section
 visualization_section = column(
-    unity_container,  # Unity iframe moved to the top
+    unity_container,  # Now defined in Section 3
     select_file,
     window_slider,
     p,
-    scatter_row,       # Add scatter plots back
+    scatter_row,
     correlation_layout,
-    p_violin,          # Add the updated violin plot
+    p_violin,
     controls_section,
     controls_layout,
     data_table,
