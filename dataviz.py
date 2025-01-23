@@ -1343,6 +1343,9 @@ scatter_row = row(
     }
 )
 
+# Define a spacer with desired height (e.g., 30 pixels)
+spacer = Div(height=30)
+
 # Main visualization section
 visualization_section = column(
     unity_container,  # Unity iframe moved to the top
@@ -1351,6 +1354,7 @@ visualization_section = column(
     p,
     scatter_row,     # Add scatter plots back
     correlation_layout,
+    spacer,          # Insert spacer here
     p_violin,
     controls_section,
     controls_layout,
