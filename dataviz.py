@@ -1245,7 +1245,7 @@ unity_iframe.visible = True
 unity_container = column(
     description_visualizer,
     unity_iframe,
-    sizing_mode='stretch_width'
+    sizing_mode='stretch_width',
     styles={
         'justify-content': 'center'
     }
