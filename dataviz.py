@@ -467,7 +467,7 @@ p_scatter_exp.add_tools(hover_scatter)
 p_scatter_af.add_tools(hover_scatter)
 p_scatter_evol.add_tools(hover_scatter)
 
-# C) Info Displays
+# C) Info Displays - with centered alignment and 50% width
 regression_info_exp = Div(
     text="", 
     styles={
@@ -475,12 +475,12 @@ regression_info_exp = Div(
         'padding': '10px',
         'border': '1px solid #ddd',
         'border-radius': '4px',
-        'margin-top': '10px',
+        'margin': '10px auto',  # Changed to auto margins for centering
         'font-size': '14px',
         'text-align': 'center',
-        'width': '50%'
-    },
-    sizing_mode="stretch_width"
+        'width': '50%',         # Changed to 50% width
+        'display': 'block'      # Ensures block-level display
+    }
 )
 
 regression_info_af = Div(
@@ -490,12 +490,12 @@ regression_info_af = Div(
         'padding': '10px',
         'border': '1px solid #ddd',
         'border-radius': '4px',
-        'margin-top': '10px',
+        'margin': '10px auto',  # Changed to auto margins for centering
         'font-size': '14px',
         'text-align': 'center',
-        'width': '50%'
-    },
-    sizing_mode="stretch_width"
+        'width': '50%',         # Changed to 50% width
+        'display': 'block'      # Ensures block-level display
+    }
 )
 
 regression_info_evol = Div(
@@ -505,12 +505,12 @@ regression_info_evol = Div(
         'padding': '10px',
         'border': '1px solid #ddd',
         'border-radius': '4px',
-        'margin-top': '10px',
+        'margin': '10px auto',  # Changed to auto margins for centering
         'font-size': '14px',
         'text-align': 'center',
-        'width': '50%'
-    },
-    sizing_mode="stretch_width"
+        'width': '50%',         # Changed to 50% width
+        'display': 'block'      # Ensures block-level display
+    }
 )
 
 ###############################################################################
@@ -1282,24 +1282,42 @@ custom_styles = Div(text="""
 # IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
 ###############################################################################
 
-# Scatter Plots Layout
+# Scatter Plots Layout with centered regression info
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
     sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    styles={
+        'flex': '1 1 350px', 
+        'min-width': '350px',
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
+    }
 )
 scatter_col_af = column(
     p_scatter_af, 
     regression_info_af, 
     sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    styles={
+        'flex': '1 1 350px', 
+        'min-width': '350px',
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
+    }
 )
 scatter_col_evol = column(
     p_scatter_evol, 
     regression_info_evol, 
     sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
+    styles={
+        'flex': '1 1 350px', 
+        'min-width': '350px',
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
+    }
 )
 
 # Scatter plots row with consistent spacing
