@@ -478,7 +478,7 @@ regression_info_exp = Div(
         'margin-top': '10px',
         'font-size': '14px',
         'text-align': 'center',
-        'width': '100%'
+        'width': '50%'
     },
     sizing_mode="stretch_width"
 )
@@ -493,7 +493,7 @@ regression_info_af = Div(
         'margin-top': '10px',
         'font-size': '14px',
         'text-align': 'center',
-        'width': '100%'
+        'width': '50%'
     },
     sizing_mode="stretch_width"
 )
