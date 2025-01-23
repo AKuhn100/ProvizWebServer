@@ -161,12 +161,15 @@ spearman_evol = []
 # Possible frustration columns
 POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
 
-# Color mapping for plots
+# Color mapping for plots - Consistent colors across all visualizations
 FRUSTRATION_COLORS = {
-    "ExpFrust.": Category10[10][0],  # Red
-    "AFFrust.": Category10[10][1],   # Blue
-    "EvolFrust.": Category10[10][2]  # Green
+    "ExpFrust.": "#E41A1C",    # Red
+    "AFFrust.": "#377EB8",     # Blue
+    "EvolFrust.": "#4DAF4A",   # Green
+    "Spearman_Diff": "#E6AB02" # Gold
 }
+
+# B-factor color (orange) will be set in the main plot configuration
 
 # Iterate through files
 for filename in os.listdir(DATA_DIR):
@@ -371,12 +374,12 @@ p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
 p.xaxis.axis_label = "Residue Index"
 p.yaxis.axis_label = "Normalized Residue Flexibility / Frustration"
 
-# Add lines
+# Add lines with consistent colors
 color_map = {
-    "b_factor":  ("B-Factor", Category10[10][0]),
-    "exp_frust": ("ExpFrust", Category10[10][1]),
-    "af_frust":  ("AFFrust", Category10[10][2]),
-    "evol_frust":("EvolFrust", Category10[10][3])
+    "b_factor":  ("B-Factor", "#FF7F00"),      # Orange
+    "exp_frust": ("ExpFrust", "#E41A1C"),      # Red
+    "af_frust":  ("AFFrust", "#377EB8"),       # Blue
+    "evol_frust":("EvolFrust", "#4DAF4A")      # Green
 }
 renderers = {}
 for col_key, (label, col) in color_map.items():
@@ -487,10 +490,10 @@ regression_info_evol = Div(
     sizing_mode="stretch_width"
 )
 
-# Initial scatter glyphs (empty)
-p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][1], alpha=0.7)
-p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7)
-p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7)
+# Initial scatter glyphs (empty) with consistent colors
+p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color="#E41A1C", alpha=0.7)   # Red
+p_scatter_af.scatter("x", "y", source=source_scatter_af,  color="#377EB8", alpha=0.7)    # Blue
+p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color="#4DAF4A", alpha=0.7) # Green
 
 ###############################################################################
 # SECTION 4: Callback Functions and Event Handlers
@@ -682,11 +685,11 @@ def update_plot(attr, old, new):
         p_scatter_af.title.text = f"{filename} (No Data)"
         p_scatter_evol.title.text = f"{filename} (No Data)"
     else:
-        # Update scatter plots with normalized data
+        # Update scatter plots with normalized data using consistent colors
         for metric, source, plot, info, color in [
-            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, Category10[10][1]),
-            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, Category10[10][2]),
-            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, Category10[10][3])
+            ("ExpFrust", source_scatter_exp, p_scatter_exp, regression_info_exp, "#E41A1C"),  # Red
+            ("AFFrust", source_scatter_af, p_scatter_af, regression_info_af, "#377EB8"),      # Blue
+            ("EvolFrust", source_scatter_evol, p_scatter_evol, regression_info_evol, "#4DAF4A")  # Green
         ]:
             x_orig = sub_orig["B_Factor"].values
             y_orig = sub_orig[metric].values
