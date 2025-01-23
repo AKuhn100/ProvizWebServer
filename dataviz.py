@@ -979,14 +979,16 @@ def create_violin_plot():
         p_violin.line([data['mean'], data['mean']], [i-0.2, i+0.2], 
                      line_color='black', line_width=2)
         
-        # Add text annotations
+        # Add text annotations with centered vertical alignment and right offset
         mean_label = Label(
-            x=data['mean'], y=i,
+            x=data['mean'], 
+            y=i,
             text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
             text_font_size='10pt',
             text_align='left',
-            y_offset=0,
-            x_offset=0.1
+            text_baseline='middle',  # Vertically center the text
+            x_offset=5,              # Offset to the right by 5 pixels
+            y_offset=0
         )
         p_violin.add_layout(mean_label)
 
