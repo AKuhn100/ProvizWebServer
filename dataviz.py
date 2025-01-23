@@ -1247,6 +1247,8 @@ unity_container = column(
     unity_iframe,
     sizing_mode='stretch_width',
     styles={
+        'margin-top': '20px',
+        'display': 'flex',
         'justify-content': 'center'
     }
 )
