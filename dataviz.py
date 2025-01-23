@@ -920,11 +920,14 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # Required before: Layout assembly
 ###############################################################################
 
-from math import pi  # Add import for pi constant
+from math import pi  # Ensure pi is imported
 from scipy import stats
+import numpy as np
+from bokeh.plotting import figure
+from bokeh.models import Label, ColumnDataSource
 
 def create_violin_plot():
-    """Create a violin plot showing the distribution of correlations for each frustration type"""
+    """Create a violin plot showing the distribution of correlations for each frustration type with embedded box plots."""
     # Prepare the data
     violin_data = []
     labels = {
@@ -943,13 +946,18 @@ def create_violin_plot():
             x_range = np.linspace(data.min(), data.max(), 100)
             y_range = kernel(x_range)
             
-            # Mirror the density curve
+            # Mirror the density curve for the violin plot
             violin_data.append({
                 'x': np.concatenate([x_range, x_range[::-1]]),
                 'y': np.concatenate([y_range, -y_range[::-1]]),
                 'frust_type': frust_type,
                 'mean': data.mean(),
                 'std': data.std(),
+                'median': data.median(),
+                'q1': data.quantile(0.25),
+                'q3': data.quantile(0.75),
+                'min': data.min(),
+                'max': data.max(),
                 'label': labels[frust_type]
             })
 
@@ -963,7 +971,11 @@ def create_violin_plot():
         toolbar_location=None
     )
     
-    # Plot violins
+    # Define box plot parameters
+    box_height = 0.3  # Height of the box plot
+    cap_size = 0.05   # Size of the whisker caps
+
+    # Plot violins and box plots
     for i, data in enumerate(violin_data):
         # Create source for violin curve
         source = ColumnDataSource({
@@ -976,7 +988,7 @@ def create_violin_plot():
         p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color='black')
         
         # Add mean line
-        p_violin.line([data['mean'], data['mean']], [i-0.2, i+0.2], 
+        p_violin.line([data['mean'], data['mean']], [i - 0.2, i + 0.2], 
                      line_color='black', line_width=2)
         
         # Add text annotations with centered vertical alignment and right offset
@@ -991,6 +1003,69 @@ def create_violin_plot():
             y_offset=0
         )
         p_violin.add_layout(mean_label)
+        
+        # Add box plot components
+        # 1. Draw the box (Q1 to Q3)
+        p_violin.rect(
+            x=(data['q1'] + data['q3']) / 2,  # Center of the box
+            y=i,                               # y-position
+            width=(data['q3'] - data['q1']),   # Width of the box (IQR)
+            height=box_height,                 # Height of the box
+            fill_color='white',
+            line_color='black'
+        )
+        
+        # 2. Draw the median line
+        p_violin.segment(
+            x0=data['median'], 
+            y0=i - box_height / 2, 
+            x1=data['median'], 
+            y1=i + box_height / 2, 
+            line_color='black', 
+            line_width=2
+        )
+        
+        # 3. Draw the whiskers (from Q1 to Min and Q3 to Max)
+        # Whisker from Q1 to Min
+        p_violin.segment(
+            x0=data['min'], 
+            y0=i, 
+            x1=data['q1'], 
+            y1=i, 
+            line_color='black', 
+            line_width=1
+        )
+        
+        # Whisker from Q3 to Max
+        p_violin.segment(
+            x0=data['q3'], 
+            y0=i, 
+            x1=data['max'], 
+            y1=i, 
+            line_color='black', 
+            line_width=1
+        )
+        
+        # 4. Draw whisker caps
+        # Left cap at Min
+        p_violin.segment(
+            x0=data['min'], 
+            y0=i - cap_size, 
+            x1=data['min'], 
+            y1=i + cap_size, 
+            line_color='black', 
+            line_width=1
+        )
+        
+        # Right cap at Max
+        p_violin.segment(
+            x0=data['max'], 
+            y0=i - cap_size, 
+            x1=data['max'], 
+            y1=i + cap_size, 
+            line_color='black', 
+            line_width=1
+        )
 
     # Customize plot
     p_violin.yaxis.ticker = list(range(len(violin_data)))
@@ -1005,20 +1080,6 @@ source_corr_plot = ColumnDataSource(data_long_corr)
 
 # Create violin plot
 p_violin = create_violin_plot()
-
-
-###############################################################################
-# SECTION 7: Additional Visualization Components
-# 
-# This section contains:
-# - Correlation plots with sorting functionality
-# - Summary statistics
-#
-# Dependencies: Sections 1-3
-# Required before: Layout assembly
-###############################################################################
-
-from math import pi  # Add import for pi constant
 
 # Initialize data source
 source_corr_plot = ColumnDataSource(data_long_corr)
