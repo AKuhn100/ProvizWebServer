@@ -958,7 +958,7 @@ def create_violin_plot():
         title="Distribution of Spearman Correlations by Frustration Type",
         x_axis_label="Spearman Correlation Between Frustration and B-factor",
         y_axis_label="Frustration Metric",
-        height=400,
+        height=600,
         sizing_mode="stretch_width",
         toolbar_location=None
     )
