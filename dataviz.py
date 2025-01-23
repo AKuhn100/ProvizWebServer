@@ -924,9 +924,10 @@ from math import pi  # Add import for pi constant
 from scipy import stats
 
 def create_violin_plot():
-    """Create a violin plot showing the distribution of correlations for each frustration type"""
+    """Create a violin plot with overlaid box plots showing the distribution of correlations for each frustration type."""
     # Prepare the data
     violin_data = []
+    box_data = []
     labels = {
         'ExpFrust.': 'Experimental',
         'AFFrust.': 'AlphaFold',
@@ -943,67 +944,141 @@ def create_violin_plot():
             x_range = np.linspace(data.min(), data.max(), 100)
             y_range = kernel(x_range)
             
-            # Mirror the density curve
+            # Normalize density to control violin width
+            y_range = y_range / y_range.max() * 0.4  # Adjust scaling as needed
+            
+            # Mirror the density curve for the violin
             violin_data.append({
                 'x': np.concatenate([x_range, x_range[::-1]]),
                 'y': np.concatenate([y_range, -y_range[::-1]]),
                 'frust_type': frust_type,
                 'mean': data.mean(),
+                'median': data.median(),
+                'q1': data.quantile(0.25),
+                'q3': data.quantile(0.75),
+                'min': data.quantile(0.05),  # Adjust as needed for whiskers
+                'max': data.quantile(0.95),
                 'std': data.std(),
                 'label': labels[frust_type]
             })
-
-    # Create violin plot
+    
+    # Define y-axis categories
+    y_categories = [data['label'] for data in violin_data]
+    
+    # Create violin plot with categorical y-axis
     p_violin = figure(
         title="Distribution of Spearman Correlations by Frustration Type",
         x_axis_label="Spearman Correlation Between Frustration and B-factor",
         y_axis_label="Frustration Metric",
+        y_range=y_categories,
         height=600,
         sizing_mode="stretch_width",
         toolbar_location=None
     )
     
-    # Plot violins
+    # Plot each violin centered on its category
     for i, data in enumerate(violin_data):
-        # Create source for violin curve
-        source = ColumnDataSource({
-            'x': data['x'],
-            'y': [i + y/10 for y in data['y']],  # Scale and shift the density curve
+        y_center = data['label']
+        patch_x = data['x']
+        patch_y = [y_center + y for y in data['y'][:len(data['x'])]]  # Upper half
+        patch_x_reverse = data['x'][::-1]
+        patch_y_reverse = [y_center - y for y in data['y'][::-1]]  # Lower half
+        
+        # Plot the violin using patch
+        p_violin.patch(
+            x=np.concatenate([patch_x, patch_x_reverse]),
+            y=np.concatenate([patch_y, patch_y_reverse]),
+            color=FRUSTRATION_COLORS[data['frust_type']],
+            alpha=0.6,
+            line_color='black'
+        )
+        
+        # Store box plot statistics
+        box_data.append({
+            'frust_type': data['frust_type'],
+            'label': data['label'],
+            'median': data['median'],
+            'q1': data['q1'],
+            'q3': data['q3'],
+            'min': data['min'],
+            'max': data['max']
         })
         
-        # Plot violin
-        color = FRUSTRATION_COLORS[data['frust_type']]
-        p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color='black')
-        
-        # Add mean line
-        p_violin.line([data['mean'], data['mean']], [i-0.3, i+0.3], 
-                     line_color='black', line_width=2)
-        
-        # Add text annotations
+        # Add text annotations for mean and std
         mean_label = Label(
-            x=data['mean'], y=i,
+            x=data['mean'], y=y_center,
             text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
             text_font_size='10pt',
             text_align='left',
-            y_offset=15
+            y_offset=10
         )
         p_violin.add_layout(mean_label)
-
-    # Customize plot
-    p_violin.yaxis.ticker = list(range(len(violin_data)))
+    
+    # Convert box_data to DataFrame for easy plotting
+    df_box = pd.DataFrame(box_data)
+    
+    # Plot Box Plots
+    # Using Quad glyphs to represent the boxes from Q1 to Q3
+    p_violin.quad(
+        top='q3',
+        bottom='q1',
+        left=df_box['median'] - 0.1,  # Slightly smaller width
+        right=df_box['median'] + 0.1,
+        source=df_box,
+        fill_color='white',
+        line_color='black',
+        line_width=1.5,
+        legend_label="Box Plot"
+    )
+    
+    # Plot Median Lines
+    p_violin.segment(
+        x0=df_box['q1'], y0=df_box['label'],
+        x1=df_box['q3'], y1=df_box['label'],
+        line_color='black',
+        line_width=2
+    )
+    
+    # Plot whiskers
+    p_violin.segment(
+        x0=df_box['min'], y0=df_box['label'],
+        x1=df_box['q1'], y1=df_box['label'],
+        line_color='black',
+        line_width=1
+    )
+    
+    p_violin.segment(
+        x0=df_box['q3'], y0=df_box['label'],
+        x1=df_box['max'], y1=df_box['label'],
+        line_color='black',
+        line_width=1
+    )
+    
+    # Plot whisker caps
+    p_violin.circle(
+        x=df_box['min'], y=df_box['label'],
+        size=5,
+        color='black',
+        alpha=0.7
+    )
+    p_violin.circle(
+        x=df_box['max'], y=df_box['label'],
+        size=5,
+        color='black',
+        alpha=0.7
+    )
+    
+    # Customize y-axis to have categorical labels
     p_violin.yaxis.major_label_overrides = {i: data['label'] for i, data in enumerate(violin_data)}
     p_violin.grid.grid_line_color = None
     p_violin.background_fill_color = "#f8f9fa"
     
+    # Add legend for box plots
+    p_violin.legend.location = "top_right"
+    p_violin.legend.click_policy = "hide"
+    
     return p_violin
-
-# Initialize data source
-source_corr_plot = ColumnDataSource(data_long_corr)
-
-# Create violin plot
-p_violin = create_violin_plot()
-
-# Rest of the additional plots code...
+    
 ###############################################################################
 # SECTION 7: Additional Visualization Components
 # 
