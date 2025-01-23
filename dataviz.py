@@ -985,7 +985,7 @@ def create_violin_plot():
             text=f"μ = {data['mean']:.3f}\nσ = {data['std']:.3f}",
             text_font_size='10pt',
             text_align='left',
-            y_offset=0
+            y_offset=0,
             x_offset=0.1
         )
         p_violin.add_layout(mean_label)
