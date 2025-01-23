@@ -1221,144 +1221,9 @@ custom_styles = Div(text="""
 # - Component assembly
 # - Document setup
 #
-# Dependencies: All previous sections (1-7) must be fully loaded
+# Dependencies: All previous sections must be fully loaded
 # IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
-# This should be the last section in your script
 ###############################################################################
-def create_bar_plot_with_sd(data_proviz):
-    """
-    Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
-    with error bars representing the standard deviation.
-    """
-    # Compute mean and standard deviation of Spearman Rho per metric
-    spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
-    stats_corrs = data_proviz[spearman_columns].agg(['mean', 'std']).transpose().reset_index()
-    stats_corrs.rename(columns={
-        'index': 'Metric',
-        'mean': 'Mean_Spearman_Rho',
-        'std': 'Std_Spearman_Rho'
-    }, inplace=True)
-
-    # Clean Metric names
-    stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-    stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
-
-    # Create ColumnDataSource for the bar plot
-    source_bar = ColumnDataSource(stats_corrs)
-
-    # Create figure
-    p_bar = figure(
-        title="Mean Spearman Correlation between B-Factor and Frustration Metrics",
-        x_axis_label="Frustration Metric",
-        y_axis_label="Mean Spearman Rho",
-        x_range=stats_corrs['Metric'].tolist(),
-        sizing_mode='stretch_width',
-        height=400,
-        tools="pan,wheel_zoom,box_zoom,reset,save",
-        toolbar_location="above"
-    )
-
-    # Add vertical bars
-    vbar_renderer = p_bar.vbar(
-        x='Metric',
-        top='Mean_Spearman_Rho',
-        width=0.6,
-        source=source_bar,
-        color='Color',
-        legend_label="Frustration Metric",
-        line_color="black"
-    )
-
-    # Add error bars
-    whisker = Whisker(
-        base='Metric',
-        upper='upper',
-        lower='lower',
-        source=source_bar,
-        level="overlay"
-    )
-    p_bar.add_layout(whisker)
-
-    # Calculate upper and lower bounds for error bars
-    source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
-    source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
-
-    # Adjust y-axis range
-    min_lower = source_bar.data['lower'].min()
-    max_upper = source_bar.data['upper'].max()
-    y_padding = (max_upper - min_lower) * 0.1 if (max_upper - min_lower) != 0 else 1
-    p_bar.y_range = Range1d(start=min_lower - y_padding, end=max_upper + y_padding)
-
-    # Add horizontal reference line
-    p_bar.line(
-        x=[-0.5, len(stats_corrs) - 0.5], 
-        y=[0, 0], 
-        line_width=1, 
-        line_dash='dashed', 
-        color='gray'
-    )
-
-    # Add hover tool
-    hover_bar = HoverTool(
-        tooltips=[
-            ("Metric", "@Metric"),
-            ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
-            ("Std Dev", "@Std_Spearman_Rho{0.3f}")
-        ],
-        renderers=[vbar_renderer],
-        mode='mouse'
-    )
-    p_bar.add_tools(hover_bar)
-    p_bar.legend.visible = False
-
-    return p_bar
-
-# Layout components
-additional_plots = column(
-    p_avg_plot,
-    p_std_plot,
-    p_corr_plot,
-    create_bar_plot_with_sd(data_proviz),
-    sizing_mode='stretch_width',
-    spacing=20,
-    name="additional_plots"
-)
-
-# Scatter Plots Layout
-scatter_col_exp = column(
-    p_scatter_exp, 
-    regression_info_exp, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_af = column(
-    p_scatter_af, 
-    regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_evol = column(
-    p_scatter_evol, 
-    regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-
-# Scatter plots row
-scatter_row = row(
-    scatter_col_exp,
-    scatter_col_af,
-    scatter_col_evol,
-    sizing_mode="stretch_width",
-    styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
-        'gap': '20px',
-        'width': '100%',
-        'margin': '0 auto',
-        'flex-wrap': 'wrap'
-    }
-)
 
 # Main visualization section
 visualization_section = column(
@@ -1367,7 +1232,8 @@ visualization_section = column(
     window_slider,
     p,
     scatter_row,
-    additional_plots,
+    correlation_layout,
+    create_bar_plot_with_sd(data_proviz),
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
