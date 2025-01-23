@@ -1232,7 +1232,6 @@ visualization_section = column(
     window_slider,
     p,
     correlation_layout,
-    create_bar_plot_with_sd(data_proviz),
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
