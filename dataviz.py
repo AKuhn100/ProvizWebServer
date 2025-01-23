@@ -972,7 +972,7 @@ def create_violin_plot():
     )
     
     # Define box plot parameters
-    box_height = 0.05  # Height of the box plot
+    box_height = 0.01  # Height of the box plot
     cap_size = 0.00   # Size of the whisker caps
 
     # Plot violins and box plots
@@ -1011,7 +1011,7 @@ def create_violin_plot():
             y=i,                               # y-position
             width=(data['q3'] - data['q1']),   # Width of the box (IQR)
             height=box_height,                 # Height of the box
-            fill_color='white',
+            fill_color='black',
             line_color='black'
         )
         
@@ -1021,7 +1021,7 @@ def create_violin_plot():
             y0=i - box_height / 2, 
             x1=data['median'], 
             y1=i + box_height / 2, 
-            line_color='black', 
+            line_color='white', 
             line_width=2
         )
         
