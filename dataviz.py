@@ -976,7 +976,7 @@ def create_violin_plot():
         p_violin.patch('x', 'y', source=source, color=color, alpha=0.6, line_color='black')
         
         # Add mean line
-        p_violin.line([data['mean'], data['mean']], [i-0.3, i+0.3], 
+        p_violin.line([data['mean'], data['mean']], [i-0.2, i+0.2], 
                      line_color='black', line_width=2)
         
         # Add text annotations
