@@ -514,7 +514,7 @@ regression_info_evol = Div(
 )
 
 ###############################################################################
-# SECTION 4: Callback Functions and Event Handlers (Modified)
+# SECTION 4: Callback Functions and Event Handlers (Updated with Debugging)
 # 
 # This section contains:
 # - Plot update callbacks
@@ -609,7 +609,7 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         name=f'regression_line_{plot_type}'
     )
 
-    # Create hover source
+    # Create hover source for the regression line (optional)
     regression_source = ColumnDataSource(data=dict(
         x=x_range,
         y=y_range,
@@ -638,7 +638,10 @@ def update_plot(attr, old, new):
     Updates both the main plot and scatter plots when a new file is selected.
     """
     filename = select_file.value
+    print(f"Selected file: {filename}")  # Debugging statement
+
     if filename not in data_by_file:
+        print(f"File not found: {filename}")  # Debugging statement
         # Reset all data sources if file not found
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[], rank_x=[], rank_y=[])
@@ -655,6 +658,7 @@ def update_plot(attr, old, new):
 
     # Get window size from slider
     window_size = window_slider.value
+    print(f"Window size: {window_size}")  # Debugging statement
 
     # Update main line plot with normalized data
     df_orig = data_by_file[filename]["df_original"]
@@ -665,10 +669,12 @@ def update_plot(attr, old, new):
         arr = df_plot[col].values
         df_plot[col] = moving_average(arr, window_size=window_size)
         df_plot[col] = min_max_normalize(df_plot[col])
+        print(f"Processed column {col}: {df_plot[col].head()}")  # Debugging statement
 
     # Update main plot
     sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
     if sub_plot.empty:
+        print("No valid rows after processing.")  # Debugging statement
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
         p.title.text = f"{filename} (No valid rows)."
     else:
@@ -681,10 +687,12 @@ def update_plot(attr, old, new):
             'evol_frust': sub_plot["EvolFrust"].tolist()
         }
         p.title.text = f"{filename} (Smoothed + Normalized)"
+        print(f"Main plot data assigned: {len(sub_plot)} rows")  # Debugging statement
 
     # Update scatter plots
     df_orig = data_by_file[filename]["df_original"]
     sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    print(f"Scatter plots data length: {len(sub_orig)}")  # Debugging statement
 
     # Reset regression renderers and data sources
     remove_regression_renderers(p_scatter_exp)
@@ -692,6 +700,7 @@ def update_plot(attr, old, new):
     remove_regression_renderers(p_scatter_evol)
 
     if sub_orig.empty:
+        print("No valid data for scatter plots.")  # Debugging statement
         p_scatter_exp.title.text = f"{filename} (No Data)"
         p_scatter_af.title.text = f"{filename} (No Data)"
         p_scatter_evol.title.text = f"{filename} (No Data)"
@@ -708,6 +717,8 @@ def update_plot(attr, old, new):
             # Calculate ranks
             rank_x = pd.Series(x_orig).rank()
             rank_y = pd.Series(y_orig).rank()
+            
+            print(f"Scatter plot for {metric}: rank_x range [{rank_x.min()}, {rank_x.max()}], rank_y range [{rank_y.min()}, {rank_y.max()}]")  # Debugging statement
             
             # Use raw rank values without normalization
             source.data = {
@@ -727,11 +738,9 @@ def update_plot(attr, old, new):
             # plot.y_range.start = 1
             # plot.y_range.end = len(rank_y)
             
-            # **Optionally, Reset Axis Ranges Based on Data (if needed)**
-            # plot.x_range.start = rank_x.min() - 1
-            # plot.x_range.end = rank_x.max() + 1
-            # plot.y_range.start = rank_y.min() - 1
-            # plot.y_range.end = rank_y.max() + 1
+            # **Optional: Add Small Padding to Axis Ranges for Better Visibility**
+            plot.x_range = Range1d(start=1, end=len(rank_x) + 1)
+            plot.y_range = Range1d(start=1, end=len(rank_y) + 1)
             
             add_regression_line_and_info(
                 fig=plot, 
@@ -744,6 +753,15 @@ def update_plot(attr, old, new):
                 x_orig=x_orig,
                 y_orig=y_orig
             )
+            print(f"Scatter plot for {metric} updated.")  # Debugging statement
+
+    # Update title and data sources
+    # (Optional) Add print statements for debugging
+    print(f"Updated plots for file: {filename}")
+    print(f"Main plot data length: {len(source_plot.data['x'])}")
+    print(f"Scatter Exp plot data length: {len(source_scatter_exp.data['x'])}")
+    print(f"Scatter AF plot data length: {len(source_scatter_af.data['x'])}")
+    print(f"Scatter Evol plot data length: {len(source_scatter_evol.data['x'])}")
 
 ###############################################################################
 # SECTION 5: Correlation Analysis Components
