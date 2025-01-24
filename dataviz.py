@@ -721,11 +721,17 @@ def update_plot(attr, old, new):
             
             plot.title.text = f"{filename} {metric}"
             
-            # Set axis ranges based on rank values
-            plot.x_range.start = 1
-            plot.x_range.end = len(rank_x)
-            plot.y_range.start = 1
-            plot.y_range.end = len(rank_y)
+            # **Remove Explicit Axis Range Settings to Allow Auto-Scaling**
+            # plot.x_range.start = 1
+            # plot.x_range.end = len(rank_x)
+            # plot.y_range.start = 1
+            # plot.y_range.end = len(rank_y)
+            
+            # **Optionally, Reset Axis Ranges Based on Data (if needed)**
+            # plot.x_range.start = rank_x.min() - 1
+            # plot.x_range.end = rank_x.max() + 1
+            # plot.y_range.start = rank_y.min() - 1
+            # plot.y_range.end = rank_y.max() + 1
             
             add_regression_line_and_info(
                 fig=plot, 
@@ -738,18 +744,6 @@ def update_plot(attr, old, new):
                 x_orig=x_orig,
                 y_orig=y_orig
             )
-
-def update_moving_average(attr, old, new):
-    """Update plot when slider value changes"""
-    update_plot(None, None, select_file.value)
-
-# Attach callbacks
-window_slider.on_change('value', update_moving_average)
-select_file.on_change("value", update_plot)
-
-# Initialize plot with default file
-if initial_file:
-    update_plot(None, None, initial_file)
 
 ###############################################################################
 # SECTION 5: Correlation Analysis Components
