@@ -514,7 +514,7 @@ regression_info_evol = Div(
 )
 
 ###############################################################################
-# SECTION 4: Callback Functions and Event Handlers
+# SECTION 4: Callback Functions and Event Handlers (Modified)
 # 
 # This section contains:
 # - Plot update callbacks
@@ -561,9 +561,8 @@ def min_max_normalize(arr):
     else:
         return np.zeros_like(arr)
 
-
 def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type="", 
-                               use_spearman=True, x_orig=None, y_orig=None):
+                                 use_spearman=True, x_orig=None, y_orig=None):
     """
     Adds a regression line and updates the info Div.
     For Spearman correlation, uses ranks and displays Spearman's rho.
@@ -598,8 +597,10 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
         slope, intercept, r_value, pval, _ = linregress(xvals_clean, yvals_clean)
         rho = r_value
 
-    # Plot regression line
-    x_range = np.linspace(0, 1, 100)  # Use [0,1] for normalized ranks
+    # Plot regression line with actual rank ranges
+    x_min = np.nanmin(xvals_clean)
+    x_max = np.nanmax(xvals_clean)
+    x_range = np.linspace(x_min, x_max, 100)
     y_range = slope * x_range + intercept
     
     regression_line = fig.line(
@@ -631,7 +632,6 @@ def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None
             <span style='font-size: 12px'>p = {pval:.2e}</span>
         </div>
         """
-
 
 def update_plot(attr, old, new):
     """
@@ -709,13 +709,10 @@ def update_plot(attr, old, new):
             rank_x = pd.Series(x_orig).rank()
             rank_y = pd.Series(y_orig).rank()
             
-            # Normalize ranks to [0, 1]
-            rank_x_norm = (rank_x - rank_x.min()) / (rank_x.max() - rank_x.min())
-            rank_y_norm = (rank_y - rank_y.min()) / (rank_y.max() - rank_y.min())
-            
+            # Use raw rank values without normalization
             source.data = {
-                'x': rank_x_norm,
-                'y': rank_y_norm,
+                'x': rank_x,
+                'y': rank_y,
                 'x_orig': x_orig,
                 'y_orig': y_orig,
                 'rank_x': rank_x,
@@ -724,10 +721,16 @@ def update_plot(attr, old, new):
             
             plot.title.text = f"{filename} {metric}"
             
+            # Set axis ranges based on rank values
+            plot.x_range.start = 1
+            plot.x_range.end = len(rank_x)
+            plot.y_range.start = 1
+            plot.y_range.end = len(rank_y)
+            
             add_regression_line_and_info(
                 fig=plot, 
-                xvals=rank_x_norm,
-                yvals=rank_y_norm, 
+                xvals=rank_x,
+                yvals=rank_y, 
                 color=color, 
                 info_div=info,
                 plot_type=metric.lower(),
@@ -736,11 +739,9 @@ def update_plot(attr, old, new):
                 y_orig=y_orig
             )
 
-
 def update_moving_average(attr, old, new):
     """Update plot when slider value changes"""
     update_plot(None, None, select_file.value)
-
 
 # Attach callbacks
 window_slider.on_change('value', update_moving_average)
