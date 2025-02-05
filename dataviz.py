@@ -1610,19 +1610,22 @@ custom_styles = Div(text="""
 # SECTION 9: Final Layout Assembly
 # 
 # This section contains:
-# - Final layout configuration
-# - Component assembly
-# - Document setup
+#  - Final layout configuration
+#  - Component assembly (all plots & controls)
+#  - Document setup (curdoc)
 #
-# Dependencies: All previous sections must be fully loaded
-# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined 
-#            before this section (p, p_scatter_exp, correlation_layout, etc.).
+# Dependencies: 
+#  - All widgets (select_file, window_slider, select_file_20F, etc.) 
+#  - All figure objects (p, p_scatter_exp, p_scatter_af, p_scatter_evol, p_violin, p_corr_plot)
+#  - The 'visualization_section_20F' setup (with build_frustration_comparison_20F)
+#  - data_table, controls_layout, etc.
 ###############################################################################
+
 from bokeh.layouts import column, row
 
-# 1) Rebuild your scatter plots with centered regression info
+# 1) Build scatter subplots with regression info in columns
 scatter_col_exp = column(
-    p_scatter_exp, 
+    p_scatter_exp,
     regression_info_exp,
     sizing_mode="stretch_width",
     styles={
@@ -1660,6 +1663,7 @@ scatter_col_evol = column(
     }
 )
 
+# 2) Combine those columns into a row that can stretch
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
@@ -1675,50 +1679,50 @@ scatter_row = row(
     }
 )
 
-# 2) Create the 20F visualization section
+# 3) The 20F Frustration Comparison section
+#    (select_file_20F + layout_20F_display is created in SECTION 7A)
 visualization_section_20F = column(
     Div(text="<h2>20F Frustration Comparison</h2>"),
-    select_file_20F,    # The 20F-specific dropdown
-    layout_20F_display, # The column updated by update_20F_plot
+    select_file_20F,
+    layout_20F_display,  # The dynamic area that loads the 20F multi-subplot
     sizing_mode='stretch_width'
 )
 
-# 3) Optional spacer
+# 4) Optionally add a spacer
 spacer = Div(height=30)
 
-# 4) Combine all subplots and controls into one main section
+# 5) Combine everything into one main column
 #    This includes:
-#      - The Unity container (3D visualizer)
-#      - The original line plot + scatter row (p, scatter_row)
-#      - The correlation layout (if you have p_corr_plot + sort_select, etc.)
-#      - The 20F section
+#      - The Unity iFrame (unity_container)
+#      - Our original 20R line plot (p)
+#      - The 20R scatter row
+#      - The new 20F section
 #      - The violin plot (p_violin)
-#      - The correlation table + filter controls
+#      - The correlation table controls & data_table
 visualization_section = column(
-    unity_container,      # Unity iframe, if you are embedding that
-    select_file,          # Original file selection for 20R
-    window_slider,
-    p,                    # Main line plot for 20R
-    scatter_row,          # 20R scatter row
-    # correlation_layout, # Uncomment if you want your correlation plot included
-    visualization_section_20F,  # 20F multi-subplot area
+    unity_container,     # 3D Protein Visualizer IFrame
+    select_file,         # 20R file selector
+    window_slider,       # MA window slider
+    p,                   # Main 20R line plot
+    scatter_row,         # 20R scatter row
+    visualization_section_20F,  # The new 20F multi-subplot layout
     spacer,
-    p_violin,
-    controls_section,     # "Filter Correlation Table" text
-    controls_layout,      # CheckboxGroups for filtering
-    data_table,           # Correlation DataTable
+    p_violin,            # Violin plot
+    controls_section,    # "Filter Correlation Table"
+    controls_layout,     # The checkbox filters
+    data_table,          # The correlation data table
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
 
-# 5) Build the top-level layout
+# 6) Build the top-level layout with your custom_styles & header
 main_layout = column(
-    custom_styles,  # Any custom CSS
-    header,         # The large header Div
+    custom_styles,   # any CSS overrides
+    header,          # main header Div
     visualization_section,
     sizing_mode='stretch_width'
 )
 
-# 6) Final Bokeh document setup
+# 7) Finally, add the layout to the Bokeh document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
