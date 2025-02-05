@@ -1356,13 +1356,12 @@ def build_frustration_comparison_20F(filepath):
         Uses sizing_mode='stretch_both' to ensure proper scaling.
         """
         p_sc = figure(
-            sizing_mode='stretch_both',
-            aspect_ratio=1,
-            min_width=350,
-            min_height=350,
+            width=400,
+            height=400,
             title=title,
             tools="pan,box_zoom,reset,save",
-            active_drag="box_zoom"
+            active_drag="box_zoom",
+            toolbar_location='right'
         )
         
         # Drop NA
@@ -1425,11 +1424,12 @@ def build_frustration_comparison_20F(filepath):
         "EvolFrust vs REP1 B-Factor", EVOL_COLOR
     )
 
-    scatter_grid = gridplot([[p_s1, p_s2, p_s3],
-                           [p_s4, p_s5, p_s6]], 
-                          sizing_mode='stretch_width',
-                          plot_width=350,
-                          plot_height=350)
+    scatter_grid = gridplot(
+        [[p_s1, p_s2, p_s3],
+         [p_s4, p_s5, p_s6]], 
+        sizing_mode='stretch_width',
+        toolbar_location='right'
+    )
 
     # B-Factor rank scatter (REP1 vs REP2) with regression line
     p_bf_rank = figure(
