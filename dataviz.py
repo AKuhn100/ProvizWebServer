@@ -1231,26 +1231,24 @@ correlation_layout = column(
 
 ###############################################################################
 # SECTION 7A: 20F Data Processing and Multi-Figure Layout
-# 
-# This code addresses:
-#   1) The six scatter plots (REP1 & REP2 B-factors vs. frustrations).
-#   2) Full-width figures (sizing_mode='stretch_width').
-#   3) B-factor rank scatter with a regression line.
-#   4) Using dark-red for REP1, light-red for REP2, green for EvolFrust.
 ###############################################################################
 
 import statsmodels.api as sm  # for LOWESS smoothing
+from bokeh.plotting import figure
+from bokeh.models import ColumnDataSource, Div, Select
+from bokeh.layouts import column, row, gridplot
 
 # --- Directory & file listing for 20F ---
 DATA_DIR_20F = "summary_data_20F"
 files_20F = sorted(f for f in os.listdir(DATA_DIR_20F) if f.startswith("summary_") and f.endswith(".txt"))
 
-# --- Helper function to read 20F files ---
+# Colors: Dark-red for REP1, Light-red for REP2, Green for Evol
+REP1_COLOR = "#8B0000"
+REP2_COLOR = "#FF4444"
+EVOL_COLOR = "#4DAF4A"
+
 def read_frustration_file_20F(filepath):
-    """
-    Reads the 20F summary file (with B_FACTOR_1, B_FACTOR_2, EXP_FRUST_1, EXP_FRUST_2, EVOL_FRUST, etc.).
-    Returns rep1_df, rep2_df, evol_frust.
-    """
+    """Reads and processes 20F summary file."""
     df = pd.read_csv(filepath, sep='\t', na_values=['n/a', 'nAN'])
 
     rep1_df = pd.DataFrame({
@@ -1272,8 +1270,8 @@ def read_frustration_file_20F(filepath):
     evol_frust = pd.to_numeric(df['EVOL_FRUST'], errors='coerce')
     return rep1_df, rep2_df, evol_frust
 
-# --- LOWESS smoothing ---
 def lowess_smoothing(x, y, frac=0.1, it=3):
+    """Performs LOWESS smoothing on input data."""
     mask = ~(pd.isna(x) | pd.isna(y))
     x_clean = x[mask]
     y_clean = y[mask]
@@ -1282,44 +1280,70 @@ def lowess_smoothing(x, y, frac=0.1, it=3):
     z = sm.nonparametric.lowess(y_clean, x_clean, frac=frac, it=it, return_sorted=False)
     return x_clean.values, z
 
-# Colors: Dark-red for REP1, Light-red for REP2, Green for Evol
-REP1_COLOR = "#8B0000"
-REP2_COLOR = "#FF4444"
-EVOL_COLOR = "#4DAF4A"
+def create_scatter_plot(x_series, y_series, title, color):
+    """Creates a scatter plot with proper sizing and formatting."""
+    p_sc = figure(
+        width=400,
+        height=400,
+        title=title,
+        tools="pan,box_zoom,reset,save",
+        active_drag="box_zoom",
+        toolbar_location='right'
+    )
+    
+    # Drop NA values
+    df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
+    if len(df_scat) < 2:
+        p_sc.title.text += " (No data)"
+        return p_sc
+    
+    # Rank transform & normalize
+    df_scat['rx'] = df_scat['x'].rank()
+    df_scat['ry'] = df_scat['y'].rank()
+    rx_min, rx_max = df_scat['rx'].min(), df_scat['rx'].max()
+    ry_min, ry_max = df_scat['ry'].min(), df_scat['ry'].max()
+    df_scat['rx_norm'] = (df_scat['rx'] - rx_min) / (rx_max - rx_min + 1e-12)
+    df_scat['ry_norm'] = (df_scat['ry'] - ry_min) / (ry_max - ry_min + 1e-12)
 
-from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, Div, Select
-from bokeh.layouts import column, row, gridplot
+    # Create scatter plot
+    sc_source = ColumnDataSource(df_scat)
+    p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
+
+    # Add regression line
+    from scipy.stats import spearmanr, linregress
+    rho, pval = spearmanr(df_scat['x'], df_scat['y'])
+    slope, intercept, _, _, _ = linregress(df_scat['rx_norm'], df_scat['ry_norm'])
+    x_line = np.linspace(0, 1, 50)
+    y_line = slope * x_line + intercept
+    p_sc.line(x_line, y_line, line_dash='dashed', color='gray')
+
+    # Update plot properties
+    p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
+    p_sc.xaxis.axis_label = "B-factor Rank"
+    p_sc.yaxis.axis_label = "Frustration Rank"
+    
+    return p_sc
 
 def build_frustration_comparison_20F(filepath):
-    """
-    Creates a 7-panel-like layout with:
-      1) Main line plot (REP1 vs REP2 vs Evol) - full width
-      2) Six scatter subplots for B-Factor vs. frustration combos
-      3) B-Factor rank scatter (REP1 vs REP2) with regression line
-    All using the color scheme:
-      - REP1 ExpFrust => dark red (#8B0000)
-      - REP2 ExpFrust => light red (#FF4444)
-      - EvolFrust => green (#4DAF4A)
-    """
-    # 1) Read & merge data
+    """Creates the complete 20F visualization layout."""
+    
+    # Load and process data
     rep1_df, rep2_df, evol_frust = read_frustration_file_20F(filepath)
     merged = rep1_df.merge(rep2_df, on='AlnIndex', suffixes=('_REP1','_REP2'))
     merged['EvolFrust'] = evol_frust
 
-    # Filter out any rows missing the main columns
     required = ['ExpFrust_REP1','ExpFrust_REP2','EvolFrust','B_Factor_REP1','B_Factor_REP2']
     valid_mask = merged[required].notna().all(axis=1)
     data = merged[valid_mask].copy()
+    
     if data.empty:
         return column(figure(height=250, sizing_mode='stretch_width', title="No valid data in file."))
 
-    # 2) LOWESS smoothing for line plot
+    # Create main line plot
     (x_r1, y_r1) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP1'])
     (x_r2, y_r2) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP2'])
     (x_ev, y_ev) = lowess_smoothing(data['AlnIndex'], data['EvolFrust'])
 
-    # 3) Main line plot
     p_main = figure(
         sizing_mode='stretch_width',
         height=400,
@@ -1327,6 +1351,7 @@ def build_frustration_comparison_20F(filepath):
         active_drag="box_zoom",
         title="20F Frustration Comparison: REP1 vs REP2"
     )
+    
     p_main.xaxis.axis_label = "Residue Number"
     p_main.yaxis.axis_label = "Frustration"
 
@@ -1335,103 +1360,38 @@ def build_frustration_comparison_20F(filepath):
         x_r2=x_r2, y_r2=y_r2,
         x_ev=x_ev, y_ev=y_ev
     ))
+
+    p_main.line('x_r1', 'y_r1', source=src_main, color=REP1_COLOR, 
+                line_width=3, legend_label="REP1 Experimental")
+    p_main.line('x_r2', 'y_r2', source=src_main, color=REP2_COLOR, 
+                line_width=3, line_dash='dashed', legend_label="REP2 Experimental")
+    p_main.line('x_ev', 'y_ev', source=src_main, color=EVOL_COLOR, 
+                line_width=2, line_dash='dotdash', legend_label="Evolutionary")
     
-    # REP1 ExpFrust (solid)
-    p_main.line('x_r1', 'y_r1', source=src_main,
-                color=REP1_COLOR, line_width=3, legend_label="REP1 Experimental")
-    # REP2 ExpFrust (dashed)
-    p_main.line('x_r2', 'y_r2', source=src_main,
-                color=REP2_COLOR, line_width=3, line_dash='dashed',
-                legend_label="REP2 Experimental")
-    # EvolFrust (dotdash)
-    p_main.line('x_ev', 'y_ev', source=src_main,
-                color=EVOL_COLOR, line_width=2, line_dash='dotdash',
-                legend_label="Evolutionary")
     p_main.legend.location = "top_left"
     p_main.legend.click_policy = "hide"
 
-    def create_scatter_plot(x_series, y_series, title, color):
-        """
-        Ranks x_series, y_series, plots them with a regression line.
-        Uses sizing_mode='stretch_both' to ensure proper scaling.
-        """
-        p_sc = figure(
-            width=400,
-            height=400,
-            title=title,
-            tools="pan,box_zoom,reset,save",
-            active_drag="box_zoom",
-            toolbar_location='right'
-        )
-        
-        # Drop NA
-        df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
-        if len(df_scat) < 2:
-            p_sc.title.text += " (No data)"
-            return p_sc
-        
-        # Rank transform & 0-1 normalize
-        df_scat['rx'] = df_scat['x'].rank()
-        df_scat['ry'] = df_scat['y'].rank()
-        rx_min, rx_max = df_scat['rx'].min(), df_scat['rx'].max()
-        ry_min, ry_max = df_scat['ry'].min(), df_scat['ry'].max()
-        df_scat['rx_norm'] = (df_scat['rx'] - rx_min) / (rx_max - rx_min + 1e-12)
-        df_scat['ry_norm'] = (df_scat['ry'] - ry_min) / (ry_max - ry_min + 1e-12)
+    # Create scatter plots
+    scatter_plots = [
+        [create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP2'],
+                           "REP2 ExpFrust vs REP2 B-Factor", REP2_COLOR),
+         create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP1'],
+                           "REP1 ExpFrust vs REP2 B-Factor", REP1_COLOR),
+         create_scatter_plot(data['B_Factor_REP2'], data['EvolFrust'],
+                           "EvolFrust vs REP2 B-Factor", EVOL_COLOR)],
+        [create_scatter_plot(data['B_Factor_REP1'], data['ExpFrust_REP2'],
+                           "REP2 ExpFrust vs REP1 B-Factor", REP2_COLOR),
+         create_scatter_plot(data['B_Factor_REP1'], data['ExpFrust_REP1'],
+                           "REP1 ExpFrust vs REP1 B-Factor", REP1_COLOR),
+         create_scatter_plot(data['B_Factor_REP1'], data['EvolFrust'],
+                           "EvolFrust vs REP1 B-Factor", EVOL_COLOR)]
+    ]
 
-        # Scatter
-        sc_source = ColumnDataSource(df_scat)
-        p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
+    scatter_grid = gridplot(scatter_plots, 
+                          toolbar_location='right',
+                          sizing_mode='scale_width')
 
-        # Spearman correlation
-        from scipy.stats import spearmanr, linregress
-        rho, pval = spearmanr(df_scat['x'], df_scat['y'])
-
-        # Regression on the rank-based data
-        slope, intercept, _, _, _ = linregress(df_scat['rx_norm'], df_scat['ry_norm'])
-        x_line = np.linspace(0,1,50)
-        y_line = slope*x_line + intercept
-        p_sc.line(x_line, y_line, line_dash='dashed', color='gray')
-
-        # Add correlation to title
-        p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
-        p_sc.xaxis.axis_label = "B-factor Rank"
-        p_sc.yaxis.axis_label = "Frustration Rank"
-        return p_sc
-    
-    # Create all six scatter plots
-    p_s1 = create_scatter_plot(
-        data['B_Factor_REP2'], data['ExpFrust_REP2'],
-        "REP2 ExpFrust vs REP2 B-Factor", REP2_COLOR
-    )
-    p_s2 = create_scatter_plot(
-        data['B_Factor_REP2'], data['ExpFrust_REP1'],
-        "REP1 ExpFrust vs REP2 B-Factor", REP1_COLOR
-    )
-    p_s3 = create_scatter_plot(
-        data['B_Factor_REP2'], data['EvolFrust'],
-        "EvolFrust vs REP2 B-Factor", EVOL_COLOR
-    )
-    p_s4 = create_scatter_plot(
-        data['B_Factor_REP1'], data['ExpFrust_REP2'],
-        "REP2 ExpFrust vs REP1 B-Factor", REP2_COLOR
-    )
-    p_s5 = create_scatter_plot(
-        data['B_Factor_REP1'], data['ExpFrust_REP1'],
-        "REP1 ExpFrust vs REP1 B-Factor", REP1_COLOR
-    )
-    p_s6 = create_scatter_plot(
-        data['B_Factor_REP1'], data['EvolFrust'],
-        "EvolFrust vs REP1 B-Factor", EVOL_COLOR
-    )
-
-    scatter_grid = gridplot(
-        [[p_s1, p_s2, p_s3],
-         [p_s4, p_s5, p_s6]], 
-        sizing_mode='stretch_width',
-        toolbar_location='right'
-    )
-
-    # B-Factor rank scatter (REP1 vs REP2) with regression line
+    # Create B-Factor rank scatter plot
     p_bf_rank = figure(
         sizing_mode='stretch_width',
         height=400,
@@ -1439,6 +1399,7 @@ def build_frustration_comparison_20F(filepath):
         tools="pan,box_zoom,wheel_zoom,reset,save",
         active_drag="box_zoom"
     )
+    
     p_bf_rank.xaxis.axis_label = "REP1 B-Factor Rank"
     p_bf_rank.yaxis.axis_label = "REP2 B-Factor Rank"
 
@@ -1448,32 +1409,35 @@ def build_frustration_comparison_20F(filepath):
     p_bf_rank.scatter('bf1_rank', 'bf2_rank', source=source_bfrank, 
                      color="purple", size=6, alpha=0.6)
 
-    # Spearman + regression line
+    # Add regression line to B-Factor plot
     rho_bf, pval_bf = spearmanr(bf1_rank, bf2_rank)
     slope, intercept, _, _, _ = linregress(bf1_rank, bf2_rank)
     x_line = np.linspace(bf1_rank.min(), bf1_rank.max(), 50)
-    y_line = slope*x_line + intercept
+    y_line = slope * x_line + intercept
     p_bf_rank.line(x_line, y_line, line_dash='dashed', color='gray')
     p_bf_rank.title.text += f"\nρ={rho_bf:.3f}, p={pval_bf:.1e}"
 
-    # Final layout: main line plot on top, scatter grid, BF rank at bottom
+    # Combine all plots into final layout
     final_layout = column(
         p_main,
         scatter_grid,
         p_bf_rank,
         sizing_mode='stretch_width'
     )
+    
     return final_layout
 
-# --- Create 20F select widget and placeholder layout
+# Create selection widget and layout
 select_file_20F = Select(
     title="Select a 20F summary file:",
     value=files_20F[0] if files_20F else "",
     options=files_20F
 )
+
 layout_20F_display = column()
 
 def update_20F_plot(attr, old, new):
+    """Updates the plot when a new file is selected."""
     filename = select_file_20F.value
     if not filename:
         layout_20F_display.children = []
@@ -1484,7 +1448,7 @@ def update_20F_plot(attr, old, new):
 
 select_file_20F.on_change('value', update_20F_plot)
 
-# Initialize with the first file if available
+# Initialize with first file if available
 if files_20F:
     init_path = os.path.join(DATA_DIR_20F, files_20F[0])
     layout_20F_display.children = [build_frustration_comparison_20F(init_path)]
