@@ -1289,7 +1289,7 @@ EVOL_COLOR = "#4DAF4A"
 
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, Div, Select
-from bokeh.layouts import column, row
+from bokeh.layouts import column, row, gridplot
 
 def build_frustration_comparison_20F(filepath):
     """
@@ -1381,7 +1381,7 @@ def build_frustration_comparison_20F(filepath):
 
         # Scatter
         sc_source = ColumnDataSource(df_scat)
-        p_sc.circle('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
+        p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
 
         # Spearman correlation
         from scipy.stats import spearmanr, linregress
