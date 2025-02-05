@@ -1237,197 +1237,155 @@ correlation_layout = column(
 # but *before* final layout references to "build_frustration_comparison_20F".
 ###############################################################################
 
+from bokeh.models import ColumnDataSource
+from bokeh.plotting import figure
+from bokeh.layouts import column, row
+from scipy.stats import spearmanr, linregress
+
 def build_frustration_comparison_20F(filepath):
     """
-    Constructs and returns a Bokeh layout of multiple plots 
-    that approximates the original seaborn multi-subplot figure for 20F data.
-
-    Color scheme:
-      - REP1 ExpFrust: Dark red (#8B0000)
-      - REP2 ExpFrust: Light red (#FF4444)
-      - EvolFrust:     Green (#4DAF4A)
-    
-    Contains:
-      1) Main line plot (full-width) with LOWESS smoothed lines
-      2) Six rank-based scatter subplots, arranged in a 2-column-by-3-rows grid:
-         (a) REP2 B-Factor vs. REP2 ExpFrust
-         (b) REP2 B-Factor vs. REP1 ExpFrust
-         (c) REP2 B-Factor vs. EvolFrust
-         (d) REP1 B-Factor vs. REP2 ExpFrust
-         (e) REP1 B-Factor vs. REP1 ExpFrust
-         (f) REP1 B-Factor vs. EvolFrust
-      Each scatter plot has a rank-based regression line and Spearman correlation text.
+    Constructs and returns a Bokeh layout containing:
+      1) A FULL-WIDTH line plot (REP1 ExpFrust, REP2 ExpFrust, EvolFrust)
+      2) SIX scatter subplots comparing:
+         - B_FACTOR_1 vs. (ExpFrust_REP1, ExpFrust_REP2, EvolFrust)
+         - B_FACTOR_2 vs. (ExpFrust_REP1, ExpFrust_REP2, EvolFrust)
+      3) Each scatter plot includes a rank correlation (Spearman) regression line.
     """
-
-    # 1) Read the 20F data
+    # --- 1) Read & Merge Data ---
     rep1_df, rep2_df, evol_frust = read_frustration_file_20F(filepath)
-
-    # 2) Merge on AlnIndex
+    
+    # Merge on AlnIndex
     merged = rep1_df.merge(rep2_df, on='AlnIndex', suffixes=('_REP1','_REP2'))
     merged['EvolFrust'] = evol_frust
-
-    # 3) Filter out rows missing any required columns
-    req_cols = ['ExpFrust_REP1','ExpFrust_REP2','EvolFrust',
-                'B_Factor_REP1','B_Factor_REP2']
-    valid_mask = ~merged[req_cols].isna().any(axis=1)
+    
+    # Filter out any row missing required data
+    required_cols = ['ExpFrust_REP1','ExpFrust_REP2','EvolFrust',
+                     'B_Factor_REP1','B_Factor_REP2','AlnIndex']
+    valid_mask = True
+    for c in required_cols:
+        valid_mask &= ~merged[c].isna()
     filtered = merged[valid_mask].copy()
     if filtered.empty:
-        return column(figure(height=200, sizing_mode='stretch_width',
-                             title="No valid data in file."))
-
-    # 4) Apply LOWESS smoothing to each frustration/b-factor
-    (x_rep1_exp, y_rep1_exp) = lowess_smoothing(filtered['AlnIndex'], filtered['ExpFrust_REP1'])
-    (x_rep2_exp, y_rep2_exp) = lowess_smoothing(filtered['AlnIndex'], filtered['ExpFrust_REP2'])
-    (x_evol,   y_evol)       = lowess_smoothing(filtered['AlnIndex'], filtered['EvolFrust'])
-    (x_rep1_bf, y_rep1_bf)   = lowess_smoothing(filtered['AlnIndex'], filtered['B_Factor_REP1'])
-    (x_rep2_bf, y_rep2_bf)   = lowess_smoothing(filtered['AlnIndex'], filtered['B_Factor_REP2'])
-
-    # 5) Main line plot (full width)
+        return column(figure(height=250, sizing_mode='stretch_width',
+                             title="No valid data for 20F in file."))
+    
+    # --- 2) LOWESS for REP1 Exp, REP2 Exp, Evol ---
+    x_rep1_exp, y_rep1_exp = lowess_smoothing(filtered['AlnIndex'], filtered['ExpFrust_REP1'])
+    x_rep2_exp, y_rep2_exp = lowess_smoothing(filtered['AlnIndex'], filtered['ExpFrust_REP2'])
+    x_evol,   y_evol       = lowess_smoothing(filtered['AlnIndex'], filtered['EvolFrust'])
+    
+    # --- 3) Create the MAIN line plot (FULL WIDTH) ---
+    # Use different shades of red for REP1/REP2, and green for evolutionary
+    rep1_exp_color = "#8B0000"  # Dark red
+    rep2_exp_color = "#FF4444"  # Lighter red
+    evol_color     = "#4DAF4A"  # Green
+    
     p_main = figure(
+        title="20F: REP1 vs REP2 vs Evolutionary",
         sizing_mode='stretch_width',
         height=400,
-        title="20F: REP1 vs REP2 Frustration (LOWESS Smoothed)",
         tools="pan,box_zoom,wheel_zoom,reset,save",
         active_drag="box_zoom"
     )
     p_main.xaxis.axis_label = "Residue Number"
     p_main.yaxis.axis_label = "Frustration"
-
-    # Create ColumnDataSource
-    source_main = ColumnDataSource(data=dict(
-        x_rep1_exp = x_rep1_exp,  y_rep1_exp = y_rep1_exp,
-        x_rep2_exp = x_rep2_exp,  y_rep2_exp = y_rep2_exp,
-        x_evol     = x_evol,      y_evol     = y_evol
-    ))
     
-    # Colors
-    color_rep1 = "#8B0000"  # dark red
-    color_rep2 = "#FF4444"  # light red
-    color_evol = "#4DAF4A"  # green
-
-    # REP1 ExpFrust line
-    p_main.line('x_rep1_exp', 'y_rep1_exp', source=source_main,
-                line_color=color_rep1, line_width=3,
-                legend_label="REP1 ExpFrust")
-
-    # REP2 ExpFrust line
-    p_main.line('x_rep2_exp', 'y_rep2_exp', source=source_main,
-                line_color=color_rep2, line_width=3, line_dash='dashed',
-                legend_label="REP2 ExpFrust")
-
-    # EvolFrust line
-    p_main.line('x_evol', 'y_evol', source=source_main,
-                line_color=color_evol, line_width=2, line_dash='dotdash',
-                legend_label="EvolFrust")
-
+    # Data sources for line
+    src_main = ColumnDataSource(data=dict(
+        x1 = x_rep1_exp, y1 = y_rep1_exp,
+        x2 = x_rep2_exp, y2 = y_rep2_exp,
+        x3 = x_evol,     y3 = y_evol
+    ))
+    # REP1 Exp
+    p_main.line('x1', 'y1', source=src_main, 
+                color=rep1_exp_color, line_width=3,
+                legend_label="REP1 Experimental")
+    # REP2 Exp
+    p_main.line('x2', 'y2', source=src_main, 
+                color=rep2_exp_color, line_width=3, line_dash='dashed',
+                legend_label="REP2 Experimental")
+    # Evol
+    p_main.line('x3', 'y3', source=src_main,
+                color=evol_color,     line_width=2, line_dash='dotdash',
+                legend_label="Evolutionary")
+    
     p_main.legend.location = "top_left"
     p_main.legend.click_policy = "hide"
-
-    # 6) Create a helper to build rank-based scatter subplots
-    def create_scatter_rank(xvals, yvals, title, color):
+    
+    # --- 4) Create the six scatter plots ---
+    # We'll define a helper function to do rank correlation + regression
+    def create_scatter_subplot(x_data, y_data, x_label, y_label, color, title):
         """
-        Build a single rank-based scatter figure with a regression line and Spearman text.
+        Creates a 300x300 scatter + rank regression line.
         """
-        from bokeh.plotting import figure
-        fig = figure(width=350, height=300, title=title,
-                     tools="pan,box_zoom,reset,save",
-                     active_drag="box_zoom")
-        fig.xaxis.visible = False
-        fig.yaxis.visible = False
-
-        df_local = pd.DataFrame({'x': xvals, 'y': yvals}).dropna()
-        if len(df_local) < 2:
-            fig.title.text += "\n(Insufficient data)"
-            return fig
-
+        p_scat = figure(width=300, height=300,
+                        title=title,
+                        tools="pan,box_zoom,reset,save",
+                        active_drag="box_zoom")
+        
+        # Drop NaN
+        df_local = pd.DataFrame({'x': x_data, 'y': y_data}).dropna()
+        if df_local.empty:
+            p_scat.title.text += " (No Data)"
+            return p_scat
+        
         # Rank transform
         df_local['rank_x'] = df_local['x'].rank()
         df_local['rank_y'] = df_local['y'].rank()
-        # 0-1 normalize ranks
-        rx_min, rx_max = df_local['rank_x'].min(), df_local['rank_x'].max()
-        ry_min, ry_max = df_local['rank_y'].min(), df_local['rank_y'].max()
-        df_local['nx'] = (df_local['rank_x'] - rx_min) / (rx_max - rx_min + 1e-12)
-        df_local['ny'] = (df_local['rank_y'] - ry_min) / (ry_max - ry_min + 1e-12)
-
-        source_scat = ColumnDataSource(df_local)
-        fig.scatter('nx', 'ny', source=source_scat, size=6, color=color, alpha=0.6)
-
-        # Spearman correlation on original x,y
+        
+        # Scatter
+        src = ColumnDataSource(df_local)
+        p_scat.circle('rank_x', 'rank_y', source=src, color=color,
+                      size=6, alpha=0.6)
+        
+        # Spearman correlation
         rho, pval = spearmanr(df_local['x'], df_local['y'])
-
-        # Regression line on the rank_x, rank_y
-        slope, intercept, _, _, _ = linregress(df_local['nx'], df_local['ny'])
-        x_line = np.linspace(0, 1, 50)
-        y_line = slope * x_line + intercept
-        fig.line(x_line, y_line, line_color='gray', line_dash='dashed')
-
-        # Add correlation to the title
-        fig.title.text += f"\nρ={rho:.3f}, p={pval:.1e}"
-
-        return fig
-
-    # 7) Build the six scatter subplots
-    #    1) REP2 B-factor vs REP2 ExpFrust
-    #    2) REP2 B-factor vs REP1 ExpFrust
-    #    3) REP2 B-factor vs EvolFrust
-    #    4) REP1 B-factor vs REP2 ExpFrust
-    #    5) REP1 B-factor vs REP1 ExpFrust
-    #    6) REP1 B-factor vs EvolFrust
-
-    # For color consistency, use:
-    #   - "#FF4444" for subplots related to REP2 experimental,
-    #   - "#8B0000" for subplots related to REP1 experimental,
-    #   - "#4DAF4A" for EvolFrust
-    #   - B-factor: no color is needed since x-axis is B-factor rank
-
-    p_s11 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP2'],
-        yvals=filtered['ExpFrust_REP2'],
-        title="REP2 B-Factor vs. REP2 ExpFrust",
-        color=color_rep2
-    )
-    p_s12 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP2'],
-        yvals=filtered['ExpFrust_REP1'],
-        title="REP2 B-Factor vs. REP1 ExpFrust",
-        color=color_rep1
-    )
-    p_s13 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP2'],
-        yvals=filtered['EvolFrust'],
-        title="REP2 B-Factor vs. EvolFrust",
-        color=color_evol
-    )
-    p_s21 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP1'],
-        yvals=filtered['ExpFrust_REP2'],
-        title="REP1 B-Factor vs. REP2 ExpFrust",
-        color=color_rep2
-    )
-    p_s22 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP1'],
-        yvals=filtered['ExpFrust_REP1'],
-        title="REP1 B-Factor vs. REP1 ExpFrust",
-        color=color_rep1
-    )
-    p_s23 = create_scatter_rank(
-        xvals=filtered['B_Factor_REP1'],
-        yvals=filtered['EvolFrust'],
-        title="REP1 B-Factor vs. EvolFrust",
-        color=color_evol
-    )
-
-    # Arrange them in two columns, three rows
-    scatter_grid_left = column(p_s11, p_s12, p_s13, sizing_mode='stretch_width')
-    scatter_grid_right = column(p_s21, p_s22, p_s23, sizing_mode='stretch_width')
-    scatter_layout = row(scatter_grid_left, scatter_grid_right, sizing_mode='stretch_width')
-
-    # 8) Return the final layout
-    return column(
-        p_main,          # main line plot
-        scatter_layout,  # 6 scatter plots
+        
+        # Regression line on rank_x, rank_y
+        slope, intercept, _, _, _ = linregress(df_local['rank_x'], df_local['rank_y'])
+        xr = np.linspace(df_local['rank_x'].min(), df_local['rank_x'].max(), 50)
+        yr = slope * xr + intercept
+        p_scat.line(xr, yr, color='gray', line_dash='dashed')
+        
+        p_scat.title.text = f"{title}\nρ={rho:.3f}, p={pval:.1e}"
+        p_scat.xaxis.axis_label = x_label
+        p_scat.yaxis.axis_label = y_label
+        return p_scat
+    
+    # B_Factor_1 vs. ExpFrust_1, ExpFrust_2, Evol
+    s11 = create_scatter_subplot(filtered['B_Factor_REP1'], filtered['ExpFrust_REP1'],
+                                 "B_Factor_1 Rank", "ExpFrust_1 Rank",
+                                 rep1_exp_color, "REP1 Exp vs B_Factor_1")
+    s12 = create_scatter_subplot(filtered['B_Factor_REP1'], filtered['ExpFrust_REP2'],
+                                 "B_Factor_1 Rank", "ExpFrust_2 Rank",
+                                 rep2_exp_color, "REP2 Exp vs B_Factor_1")
+    s13 = create_scatter_subplot(filtered['B_Factor_REP1'], filtered['EvolFrust'],
+                                 "B_Factor_1 Rank", "EvolFrust Rank",
+                                 evol_color, "Evol vs B_Factor_1")
+    
+    # B_Factor_2 vs. ExpFrust_1, ExpFrust_2, Evol
+    s21 = create_scatter_subplot(filtered['B_Factor_REP2'], filtered['ExpFrust_REP1'],
+                                 "B_Factor_2 Rank", "ExpFrust_1 Rank",
+                                 rep1_exp_color, "REP1 Exp vs B_Factor_2")
+    s22 = create_scatter_subplot(filtered['B_Factor_REP2'], filtered['ExpFrust_REP2'],
+                                 "B_Factor_2 Rank", "ExpFrust_2 Rank",
+                                 rep2_exp_color, "REP2 Exp vs B_Factor_2")
+    s23 = create_scatter_subplot(filtered['B_Factor_REP2'], filtered['EvolFrust'],
+                                 "B_Factor_2 Rank", "EvolFrust Rank",
+                                 evol_color, "Evol vs B_Factor_2")
+    
+    scatter_left = column(s11, s12, s13)
+    scatter_right = column(s21, s22, s23)
+    scatter_row = row(scatter_left, scatter_right)
+    
+    # Assemble final layout
+    layout_20F = column(
+        p_main,        # full-width line plot
+        scatter_row,   # two columns of 3 scatter subplots
         sizing_mode='stretch_width'
     )
+    
+    return layout_20F
 
 ###############################################################################
 # SECTION 8: UI Components and Static Content
