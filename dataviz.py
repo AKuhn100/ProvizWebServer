@@ -1152,82 +1152,82 @@ sort_select.on_change('value', update_sort_order)
 #     toolbar_location="above"
 # )
 
-# Define color palette for Frustration Types
-frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
-color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
-                 for i, frust in enumerate(frust_types_corr)}
+# # Define color palette for Frustration Types
+# frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
+# color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
+#                  for i, frust in enumerate(frust_types_corr)}
 
-# Add HoverTool
-hover_corr = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Metric", "@Frust_Type"),
-        ("Spearman Rho", "@Rho{0.3f}")
-    ],
-    mode='mouse'
-)
-p_corr_plot.add_tools(hover_corr)
+# # Add HoverTool
+# hover_corr = HoverTool(
+#     tooltips=[
+#         ("Protein", "@Protein"),
+#         ("Frustration Metric", "@Frust_Type"),
+#         ("Spearman Rho", "@Rho{0.3f}")
+#     ],
+#     mode='mouse'
+# )
+# p_corr_plot.add_tools(hover_corr)
 
-# Add horizontal line at y=0
-p_corr_plot.line(
-    x=[-0.5, len(protein_order) - 0.5], 
-    y=[0, 0], 
-    line_width=1, 
-    line_dash='dashed', 
-    color='gray', 
-    name='y_zero_line'
-)
+# # Add horizontal line at y=0
+# p_corr_plot.line(
+#     x=[-0.5, len(protein_order) - 0.5], 
+#     y=[0, 0], 
+#     line_width=1, 
+#     line_dash='dashed', 
+#     color='gray', 
+#     name='y_zero_line'
+# )
 
-# Add scatter glyphs
-legend_items = []
+# # Add scatter glyphs
+# legend_items = []
 
-for frust in frust_types_corr:
-    if frust != "":  # Skip empty Frust_Type
-        subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+# for frust in frust_types_corr:
+#     if frust != "":  # Skip empty Frust_Type
+#         subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
         
-        if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
-            # Ensure Protein is categorical with proper ordering
-            subset['Protein'] = pd.Categorical(subset['Protein'], 
-                                            categories=protein_order, 
-                                            ordered=True)
-            # Sort by Protein to maintain order
-            subset = subset.sort_values('Protein')
-            source_subset = ColumnDataSource(subset)
+#         if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
+#             # Ensure Protein is categorical with proper ordering
+#             subset['Protein'] = pd.Categorical(subset['Protein'], 
+#                                             categories=protein_order, 
+#                                             ordered=True)
+#             # Sort by Protein to maintain order
+#             subset = subset.sort_values('Protein')
+#             source_subset = ColumnDataSource(subset)
             
-            renderer = p_corr_plot.scatter(
-                x='Protein',
-                y='Rho',
-                source=source_subset,
-                color=color_map_corr[frust],
-                size=8,
-                alpha=0.6,
-                name=f'scatter_{frust}'
-            )
-            legend_items.append((frust, [renderer]))
+#             renderer = p_corr_plot.scatter(
+#                 x='Protein',
+#                 y='Rho',
+#                 source=source_subset,
+#                 color=color_map_corr[frust],
+#                 size=8,
+#                 alpha=0.6,
+#                 name=f'scatter_{frust}'
+#             )
+#             legend_items.append((frust, [renderer]))
 
-if legend_items:
-    legend = Legend(items=legend_items, 
-                   location="top_left", 
-                   title="Frustration Type", 
-                   click_policy="mute")
-    p_corr_plot.add_layout(legend)
+# if legend_items:
+#     legend = Legend(items=legend_items, 
+#                    location="top_left", 
+#                    title="Frustration Type", 
+#                    click_policy="mute")
+#     p_corr_plot.add_layout(legend)
 
-# Rotate x-axis labels
-p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+# # Rotate x-axis labels
+# p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
-# Create layout for this section
-plot_controls = row(
-    sort_select,
-    sizing_mode="stretch_width",
-    name="plot_controls"
-)
+# # Create layout for this section
+# plot_controls = row(
+#     sort_select,
+#     sizing_mode="stretch_width",
+#     name="plot_controls"
+# )
 
-correlation_layout = column(
-    plot_controls,
-    p_corr_plot,
-    sizing_mode="stretch_width",
-    name="correlation_layout"
-)
+# correlation_layout = column(
+#     plot_controls,
+#     p_corr_plot,
+#     sizing_mode="stretch_width",
+#     name="correlation_layout"
+# )
 
 ###############################################################################
 # SECTION 8: UI Components and Static Content
