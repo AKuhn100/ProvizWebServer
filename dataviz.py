@@ -753,16 +753,9 @@ if initial_file:
 ###############################################################################
 # SECTION 5: Correlation Analysis Components
 # 
-# This section contains:
-# - Correlation table setup
-# - Table columns and formatting
-# - Data source initialization
-#
-# Dependencies: Sections 1-2
-# Required before: Filter controls and layout sections
+# (This section remains unchanged if you still want to keep your correlation table.)
 ###############################################################################
 
-# (D) CORRELATION TABLE
 if df_all_corr.empty:
     columns = [
         TableColumn(field="Test", title="Test"),
@@ -774,7 +767,6 @@ if df_all_corr.empty:
     source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 else:
-    # Updated to include 'Frust_Type' from the integrated changes
     source_corr = ColumnDataSource(data_long_corr)
     columns = [
         TableColumn(field="Test", title="Test"),
@@ -785,6 +777,102 @@ else:
         TableColumn(field="Frust_Type", title="Frustration Type")
     ]
     data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+
+###############################################################################
+# SECTION 6: Filter Controls and Callbacks
+# 
+# (This section is unaffected by the removal of the Spearman plot.)
+###############################################################################
+
+def split_labels(labels, num_columns):
+    if num_columns <= 0:
+        return [labels]
+    k, m = divmod(len(labels), num_columns)
+    return [labels[i*k + min(i, m):(i+1)*k + min(i+1, m)] for i in range(num_columns)]
+
+NUM_COLUMNS = 3
+
+tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+if not df_all_corr.empty:
+    combo_options = sorted({
+        f"{row['MetricA']} vs {row['MetricB']}" 
+        for _, row in df_all_corr.iterrows()
+    })
+else:
+    combo_options = []
+
+if not df_all_corr.empty:
+    test_labels_split = split_labels(tests_in_corr, NUM_COLUMNS)
+    combo_labels_split = split_labels(combo_options, NUM_COLUMNS)
+    
+    checkbox_tests_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],
+            name=f'tests_column_{i+1}'
+        ) for i, col_labels in enumerate(test_labels_split)
+    ]
+    
+    checkbox_combos_columns = [
+        CheckboxGroup(
+            labels=col_labels,
+            active=[],
+            name=f'combos_column_{i+1}'
+        ) for i, col_labels in enumerate(combo_labels_split)
+    ]
+else:
+    checkbox_tests_columns = [CheckboxGroup(labels=[], active=[], name='tests_column_1')]
+    checkbox_combos_columns = [CheckboxGroup(labels=[], active=[], name='combos_column_1')]
+
+tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width', width=300)
+combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width', width=300)
+
+tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+
+tests_column = column(tests_title, tests_layout, sizing_mode='stretch_width')
+combos_column = column(combos_title, combos_layout, sizing_mode='stretch_width')
+
+controls_layout = row(
+    tests_column,
+    Spacer(width=50),
+    combos_column,
+    sizing_mode='stretch_width'
+)
+
+def get_selected_labels(checkbox_columns):
+    selected = []
+    for checkbox in checkbox_columns:
+        selected.extend([checkbox.labels[i] for i in checkbox.active])
+    return selected
+
+def update_corr_filter(attr, old, new):
+    if data_long_corr.empty:
+        return
+    selected_tests = get_selected_labels(checkbox_tests_columns)
+    selected_combos = get_selected_labels(checkbox_combos_columns)
+
+    if not selected_tests and not selected_combos:
+        filtered = data_long_corr
+    else:
+        df_tmp = data_long_corr.copy()
+        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}" 
+                                           if pd.notna(r['MetricA']) and pd.notna(r['MetricB']) else '', axis=1)
+        if selected_tests and selected_combos:
+            filtered = df_tmp[
+                (df_tmp["Test"].isin(selected_tests)) &
+                (df_tmp["combo_str"].isin(selected_combos))
+            ].drop(columns=["combo_str"])
+        elif selected_tests:
+            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
+        elif selected_combos:
+            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
+        else:
+            filtered = data_long_corr
+    source_corr.data = filtered.to_dict(orient="list")
+
+for checkbox in checkbox_tests_columns + checkbox_combos_columns:
+    checkbox.on_change('active', update_corr_filter)
 
 ###############################################################################
 # SECTION 6: Filter Controls and Callbacks
@@ -1138,96 +1226,96 @@ sort_select = Select(
 # Attach the callback
 sort_select.on_change('value', update_sort_order)
 
-# # Spearman Rho per Protein and Frustration Metric
-# p_corr_plot = figure(
-#     title="Spearman Correlation per Protein and Frustration Metric",
-#     x_axis_label="Protein (ordered by selected metric)",
-#     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-#     x_range=protein_order,
-#     sizing_mode='stretch_width',
-#     height=600,
-#     tools="pan,box_zoom,wheel_zoom,reset,save",
-#     active_drag="box_zoom",
-#     active_scroll=None,
-#     toolbar_location="above"
-# )
+# Spearman Rho per Protein and Frustration Metric
+p_corr_plot = figure(
+    title="Spearman Correlation per Protein and Frustration Metric",
+    x_axis_label="Protein (ordered by selected metric)",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_range=protein_order,
+    sizing_mode='stretch_width',
+    height=600,
+    tools="pan,box_zoom,wheel_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None,
+    toolbar_location="above"
+)
 
-# # Define color palette for Frustration Types
-# frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
-# color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
-#                  for i, frust in enumerate(frust_types_corr)}
+# Define color palette for Frustration Types
+frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
+color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
+                 for i, frust in enumerate(frust_types_corr)}
 
-# # Add HoverTool
-# hover_corr = HoverTool(
-#     tooltips=[
-#         ("Protein", "@Protein"),
-#         ("Frustration Metric", "@Frust_Type"),
-#         ("Spearman Rho", "@Rho{0.3f}")
-#     ],
-#     mode='mouse'
-# )
-# p_corr_plot.add_tools(hover_corr)
+# Add HoverTool
+hover_corr = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Metric", "@Frust_Type"),
+        ("Spearman Rho", "@Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_corr_plot.add_tools(hover_corr)
 
-# # Add horizontal line at y=0
-# p_corr_plot.line(
-#     x=[-0.5, len(protein_order) - 0.5], 
-#     y=[0, 0], 
-#     line_width=1, 
-#     line_dash='dashed', 
-#     color='gray', 
-#     name='y_zero_line'
-# )
+# Add horizontal line at y=0
+p_corr_plot.line(
+    x=[-0.5, len(protein_order) - 0.5], 
+    y=[0, 0], 
+    line_width=1, 
+    line_dash='dashed', 
+    color='gray', 
+    name='y_zero_line'
+)
 
-# # Add scatter glyphs
-# legend_items = []
+# Add scatter glyphs
+legend_items = []
 
-# for frust in frust_types_corr:
-#     if frust != "":  # Skip empty Frust_Type
-#         subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+for frust in frust_types_corr:
+    if frust != "":  # Skip empty Frust_Type
+        subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
         
-#         if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
-#             # Ensure Protein is categorical with proper ordering
-#             subset['Protein'] = pd.Categorical(subset['Protein'], 
-#                                             categories=protein_order, 
-#                                             ordered=True)
-#             # Sort by Protein to maintain order
-#             subset = subset.sort_values('Protein')
-#             source_subset = ColumnDataSource(subset)
+        if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
+            # Ensure Protein is categorical with proper ordering
+            subset['Protein'] = pd.Categorical(subset['Protein'], 
+                                            categories=protein_order, 
+                                            ordered=True)
+            # Sort by Protein to maintain order
+            subset = subset.sort_values('Protein')
+            source_subset = ColumnDataSource(subset)
             
-#             renderer = p_corr_plot.scatter(
-#                 x='Protein',
-#                 y='Rho',
-#                 source=source_subset,
-#                 color=color_map_corr[frust],
-#                 size=8,
-#                 alpha=0.6,
-#                 name=f'scatter_{frust}'
-#             )
-#             legend_items.append((frust, [renderer]))
+            renderer = p_corr_plot.scatter(
+                x='Protein',
+                y='Rho',
+                source=source_subset,
+                color=color_map_corr[frust],
+                size=8,
+                alpha=0.6,
+                name=f'scatter_{frust}'
+            )
+            legend_items.append((frust, [renderer]))
 
-# if legend_items:
-#     legend = Legend(items=legend_items, 
-#                    location="top_left", 
-#                    title="Frustration Type", 
-#                    click_policy="mute")
-#     p_corr_plot.add_layout(legend)
+if legend_items:
+    legend = Legend(items=legend_items, 
+                   location="top_left", 
+                   title="Frustration Type", 
+                   click_policy="mute")
+    p_corr_plot.add_layout(legend)
 
-# # Rotate x-axis labels
-# p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+# Rotate x-axis labels
+p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
-# # Create layout for this section
-# plot_controls = row(
-#     sort_select,
-#     sizing_mode="stretch_width",
-#     name="plot_controls"
-# )
+# Create layout for this section
+plot_controls = row(
+    sort_select,
+    sizing_mode="stretch_width",
+    name="plot_controls"
+)
 
-# correlation_layout = column(
-#     plot_controls,
-#     p_corr_plot,
-#     sizing_mode="stretch_width",
-#     name="correlation_layout"
-# )
+correlation_layout = column(
+    plot_controls,
+    p_corr_plot,
+    sizing_mode="stretch_width",
+    name="correlation_layout"
+)
 
 ###############################################################################
 # SECTION 8: UI Components and Static Content
