@@ -1282,9 +1282,12 @@ def lowess_smoothing(x, y, frac=0.1, it=3):
 
 def create_scatter_plot(x_series, y_series, title, color):
     """Creates a scatter plot with proper sizing and formatting."""
+    # Calculate width based on viewport
     p_sc = figure(
-        width=400,
-        height=400,
+        sizing_mode='scale_both',
+        aspect_ratio=1,
+        width=350,  # Base width that will scale
+        height=350, # Base height that will scale
         title=title,
         tools="pan,box_zoom,reset,save",
         active_drag="box_zoom",
@@ -1344,8 +1347,18 @@ def build_frustration_comparison_20F(filepath):
     (x_r2, y_r2) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP2'])
     (x_ev, y_ev) = lowess_smoothing(data['AlnIndex'], data['EvolFrust'])
 
+    # Create main line plot container
+    main_container = Div(
+        text=f"""
+        <div style="width: 95vw; display: flex; justify-content: center; align-items: center; margin: 20px auto; max-width: 1200px;">
+            <div style="width: 100%;" id="main_plot_container"></div>
+        </div>
+        """,
+        sizing_mode='stretch_width'
+    )
+
     p_main = figure(
-        sizing_mode='stretch_width',
+        sizing_mode='scale_both',
         height=400,
         tools="pan,box_zoom,wheel_zoom,reset,save",
         active_drag="box_zoom",
