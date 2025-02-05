@@ -1412,7 +1412,7 @@ visualization_section = column(
     unity_container,  # Unity iframe moved to the top
     select_file,
     window_slider,
-    p,
+    # p,
     scatter_row,     # Add scatter plots back
     correlation_layout,
     spacer,          # Insert spacer here
