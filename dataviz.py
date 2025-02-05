@@ -1138,19 +1138,19 @@ sort_select = Select(
 # Attach the callback
 sort_select.on_change('value', update_sort_order)
 
-# Spearman Rho per Protein and Frustration Metric
-p_corr_plot = figure(
-    title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein (ordered by selected metric)",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-    x_range=protein_order,
-    sizing_mode='stretch_width',
-    height=600,
-    tools="pan,box_zoom,wheel_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None,
-    toolbar_location="above"
-)
+# # Spearman Rho per Protein and Frustration Metric
+# p_corr_plot = figure(
+#     title="Spearman Correlation per Protein and Frustration Metric",
+#     x_axis_label="Protein (ordered by selected metric)",
+#     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+#     x_range=protein_order,
+#     sizing_mode='stretch_width',
+#     height=600,
+#     tools="pan,box_zoom,wheel_zoom,reset,save",
+#     active_drag="box_zoom",
+#     active_scroll=None,
+#     toolbar_location="above"
+# )
 
 # Define color palette for Frustration Types
 frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
