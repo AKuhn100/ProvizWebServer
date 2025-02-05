@@ -1615,56 +1615,59 @@ custom_styles = Div(text="""
 # - Document setup
 #
 # Dependencies: All previous sections must be fully loaded
-# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
+# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined 
+#            before this section (p, p_scatter_exp, correlation_layout, etc.).
 ###############################################################################
+from bokeh.layouts import column, row
 
-# Scatter Plots Layout with centered regression info
+# 1) Rebuild your scatter plots with centered regression info
 scatter_col_exp = column(
     p_scatter_exp, 
-    regression_info_exp, 
+    regression_info_exp,
     sizing_mode="stretch_width",
     styles={
-        'flex': '1 1 350px', 
+        'flex': '1 1 350px',
         'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
-    }
-)
-scatter_col_af = column(
-    p_scatter_af, 
-    regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={
-        'flex': '1 1 350px', 
-        'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
-    }
-)
-scatter_col_evol = column(
-    p_scatter_evol, 
-    regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={
-        'flex': '1 1 350px', 
-        'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
     }
 )
 
-# Scatter plots row with consistent spacing
+scatter_col_af = column(
+    p_scatter_af,
+    regression_info_af,
+    sizing_mode="stretch_width",
+    styles={
+        'flex': '1 1 350px',
+        'min-width': '350px',
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
+    }
+)
+
+scatter_col_evol = column(
+    p_scatter_evol,
+    regression_info_evol,
+    sizing_mode="stretch_width",
+    styles={
+        'flex': '1 1 350px',
+        'min-width': '350px',
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
+    }
+)
+
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
     sizing_mode="stretch_width",
     styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
+        'display': 'flex',
+        'justify-content': 'space-between',
         'gap': '20px',
         'width': '100%',
         'margin': '20px auto',
@@ -1672,43 +1675,50 @@ scatter_row = row(
     }
 )
 
-# Create a sub-column for the 20F UI
+# 2) Create the 20F visualization section
 visualization_section_20F = column(
     Div(text="<h2>20F Frustration Comparison</h2>"),
-    select_file_20F,
-    layout_20F_display,  # The column we update when select_file_20F changes
+    select_file_20F,    # The 20F-specific dropdown
+    layout_20F_display, # The column updated by update_20F_plot
     sizing_mode='stretch_width'
 )
 
-# Define a spacer with desired height (e.g., 30 pixels)
+# 3) Optional spacer
 spacer = Div(height=30)
 
-# Main visualization section
+# 4) Combine all subplots and controls into one main section
+#    This includes:
+#      - The Unity container (3D visualizer)
+#      - The original line plot + scatter row (p, scatter_row)
+#      - The correlation layout (if you have p_corr_plot + sort_select, etc.)
+#      - The 20F section
+#      - The violin plot (p_violin)
+#      - The correlation table + filter controls
 visualization_section = column(
-    unity_container,  # Unity iframe moved to the top
-    select_file,
+    unity_container,      # Unity iframe, if you are embedding that
+    select_file,          # Original file selection for 20R
     window_slider,
-    p,
-    scatter_row,     # Add scatter plots back
-    # correlation_layout,
-    visualization_section_20F,
-    spacer,          # Insert spacer here
+    p,                    # Main line plot for 20R
+    scatter_row,          # 20R scatter row
+    # correlation_layout, # Uncomment if you want your correlation plot included
+    visualization_section_20F,  # 20F multi-subplot area
+    spacer,
     p_violin,
-    controls_section,
-    controls_layout,
-    data_table,
+    controls_section,     # "Filter Correlation Table" text
+    controls_layout,      # CheckboxGroups for filtering
+    data_table,           # Correlation DataTable
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
 
-# Main layout assembly
+# 5) Build the top-level layout
 main_layout = column(
-    custom_styles,
-    header,
+    custom_styles,  # Any custom CSS
+    header,         # The large header Div
     visualization_section,
     sizing_mode='stretch_width'
 )
 
-# Set up document
+# 6) Final Bokeh document setup
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
