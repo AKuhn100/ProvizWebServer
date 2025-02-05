@@ -1075,159 +1075,159 @@ def create_violin_plot():
     
     return p_violin
 
-# # Initialize data source
-# source_corr_plot = ColumnDataSource(data_long_corr)
+# Initialize data source
+source_corr_plot = ColumnDataSource(data_long_corr)
 
-# # Create violin plot
-# p_violin = create_violin_plot()
+# Create violin plot
+p_violin = create_violin_plot()
 
-# # Initialize data source
-# source_corr_plot = ColumnDataSource(data_long_corr)
+# Initialize data source
+source_corr_plot = ColumnDataSource(data_long_corr)
 
-# # Ensure protein_order is defined
-# if 'protein_order' not in globals():
-#     protein_order = []
+# Ensure protein_order is defined
+if 'protein_order' not in globals():
+    protein_order = []
 
-# # Create sorting button and callback
-# def update_sort_order(attr, old, new):
-#     """Update plot order when sort selection changes"""
-#     selected_metric = sort_select.value
-#     print(f"Sorting by: {selected_metric}")  # Debug print
+# Create sorting button and callback
+def update_sort_order(attr, old, new):
+    """Update plot order when sort selection changes"""
+    selected_metric = sort_select.value
+    print(f"Sorting by: {selected_metric}")  # Debug print
 
-#     if selected_metric == "Spearman Diff":
-#         # Sort by Spearman difference
-#         sorted_data = data_proviz.sort_values('Spearman_Diff')
-#         new_order = sorted_data['Protein'].tolist()
-#     else:
-#         # Sort by the selected metric's correlation values
-#         metric_data = data_long_corr[data_long_corr['Frust_Type'] == selected_metric]
-#         sorted_data = metric_data.sort_values('Rho')
-#         new_order = sorted_data['Protein'].tolist()
+    if selected_metric == "Spearman Diff":
+        # Sort by Spearman difference
+        sorted_data = data_proviz.sort_values('Spearman_Diff')
+        new_order = sorted_data['Protein'].tolist()
+    else:
+        # Sort by the selected metric's correlation values
+        metric_data = data_long_corr[data_long_corr['Frust_Type'] == selected_metric]
+        sorted_data = metric_data.sort_values('Rho')
+        new_order = sorted_data['Protein'].tolist()
     
-#     print(f"New order: {new_order}")  # Debug print
+    print(f"New order: {new_order}")  # Debug print
     
-#     # Update the plot's x-range
-#     p_corr_plot.x_range.factors = new_order
+    # Update the plot's x-range
+    p_corr_plot.x_range.factors = new_order
 
-#     # Update each renderer's data source
-#     for frust in frust_types_corr:
-#         if frust != "":
-#             subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
-#             if not subset.empty:
-#                 # Reset the categorical order
-#                 subset['Protein'] = pd.Categorical(subset['Protein'], 
-#                                                 categories=new_order, 
-#                                                 ordered=True)
-#                 subset = subset.sort_values('Protein')
-#                 renderer = next(r for r in p_corr_plot.renderers 
-#                              if isinstance(r, GlyphRenderer) and 
-#                              r.name == f'scatter_{frust}')
-#                 renderer.data_source.data.update({
-#                     'Protein': subset['Protein'].tolist(),
-#                     'Rho': subset['Rho'].tolist(),
-#                     'Frust_Type': subset['Frust_Type'].tolist()
-#                 })
+    # Update each renderer's data source
+    for frust in frust_types_corr:
+        if frust != "":
+            subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+            if not subset.empty:
+                # Reset the categorical order
+                subset['Protein'] = pd.Categorical(subset['Protein'], 
+                                                categories=new_order, 
+                                                ordered=True)
+                subset = subset.sort_values('Protein')
+                renderer = next(r for r in p_corr_plot.renderers 
+                             if isinstance(r, GlyphRenderer) and 
+                             r.name == f'scatter_{frust}')
+                renderer.data_source.data.update({
+                    'Protein': subset['Protein'].tolist(),
+                    'Rho': subset['Rho'].tolist(),
+                    'Frust_Type': subset['Frust_Type'].tolist()
+                })
 
-# sort_select = Select(
-#     title="Sort Proteins By:",
-#     value="Spearman Diff",
-#     options=["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."],
-#     width=200
-# )
+sort_select = Select(
+    title="Sort Proteins By:",
+    value="Spearman Diff",
+    options=["Spearman Diff", "ExpFrust.", "AFFrust.", "EvolFrust."],
+    width=200
+)
 
-# # Attach the callback
-# sort_select.on_change('value', update_sort_order)
+# Attach the callback
+sort_select.on_change('value', update_sort_order)
 
-# # Spearman Rho per Protein and Frustration Metric
-# p_corr_plot = figure(
-#     title="Spearman Correlation per Protein and Frustration Metric",
-#     x_axis_label="Protein (ordered by selected metric)",
-#     y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-#     x_range=protein_order,
-#     sizing_mode='stretch_width',
-#     height=600,
-#     tools="pan,box_zoom,wheel_zoom,reset,save",
-#     active_drag="box_zoom",
-#     active_scroll=None,
-#     toolbar_location="above"
-# )
+# Spearman Rho per Protein and Frustration Metric
+p_corr_plot = figure(
+    title="Spearman Correlation per Protein and Frustration Metric",
+    x_axis_label="Protein (ordered by selected metric)",
+    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    x_range=protein_order,
+    sizing_mode='stretch_width',
+    height=600,
+    tools="pan,box_zoom,wheel_zoom,reset,save",
+    active_drag="box_zoom",
+    active_scroll=None,
+    toolbar_location="above"
+)
 
-# # Define color palette for Frustration Types
-# frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
-# color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
-#                  for i, frust in enumerate(frust_types_corr)}
+# Define color palette for Frustration Types
+frust_types_corr = [ft for ft in data_long_corr['Frust_Type'].unique() if ft != ""]
+color_map_corr = {frust: FRUSTRATION_COLORS.get(frust, Category10[10][i]) 
+                 for i, frust in enumerate(frust_types_corr)}
 
-# # Add HoverTool
-# hover_corr = HoverTool(
-#     tooltips=[
-#         ("Protein", "@Protein"),
-#         ("Frustration Metric", "@Frust_Type"),
-#         ("Spearman Rho", "@Rho{0.3f}")
-#     ],
-#     mode='mouse'
-# )
-# p_corr_plot.add_tools(hover_corr)
+# Add HoverTool
+hover_corr = HoverTool(
+    tooltips=[
+        ("Protein", "@Protein"),
+        ("Frustration Metric", "@Frust_Type"),
+        ("Spearman Rho", "@Rho{0.3f}")
+    ],
+    mode='mouse'
+)
+p_corr_plot.add_tools(hover_corr)
 
-# # Add horizontal line at y=0
-# p_corr_plot.line(
-#     x=[-0.5, len(protein_order) - 0.5], 
-#     y=[0, 0], 
-#     line_width=1, 
-#     line_dash='dashed', 
-#     color='gray', 
-#     name='y_zero_line'
-# )
+# Add horizontal line at y=0
+p_corr_plot.line(
+    x=[-0.5, len(protein_order) - 0.5], 
+    y=[0, 0], 
+    line_width=1, 
+    line_dash='dashed', 
+    color='gray', 
+    name='y_zero_line'
+)
 
-# # Add scatter glyphs
-# legend_items = []
+# Add scatter glyphs
+legend_items = []
 
-# for frust in frust_types_corr:
-#     if frust != "":  # Skip empty Frust_Type
-#         subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
+for frust in frust_types_corr:
+    if frust != "":  # Skip empty Frust_Type
+        subset = data_long_corr[data_long_corr['Frust_Type'] == frust].copy()
         
-#         if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
-#             # Ensure Protein is categorical with proper ordering
-#             subset['Protein'] = pd.Categorical(subset['Protein'], 
-#                                             categories=protein_order, 
-#                                             ordered=True)
-#             # Sort by Protein to maintain order
-#             subset = subset.sort_values('Protein')
-#             source_subset = ColumnDataSource(subset)
+        if not subset.empty and 'Protein' in subset.columns and 'Rho' in subset.columns:
+            # Ensure Protein is categorical with proper ordering
+            subset['Protein'] = pd.Categorical(subset['Protein'], 
+                                            categories=protein_order, 
+                                            ordered=True)
+            # Sort by Protein to maintain order
+            subset = subset.sort_values('Protein')
+            source_subset = ColumnDataSource(subset)
             
-#             renderer = p_corr_plot.scatter(
-#                 x='Protein',
-#                 y='Rho',
-#                 source=source_subset,
-#                 color=color_map_corr[frust],
-#                 size=8,
-#                 alpha=0.6,
-#                 name=f'scatter_{frust}'
-#             )
-#             legend_items.append((frust, [renderer]))
+            renderer = p_corr_plot.scatter(
+                x='Protein',
+                y='Rho',
+                source=source_subset,
+                color=color_map_corr[frust],
+                size=8,
+                alpha=0.6,
+                name=f'scatter_{frust}'
+            )
+            legend_items.append((frust, [renderer]))
 
-# if legend_items:
-#     legend = Legend(items=legend_items, 
-#                    location="top_left", 
-#                    title="Frustration Type", 
-#                    click_policy="mute")
-#     p_corr_plot.add_layout(legend)
+if legend_items:
+    legend = Legend(items=legend_items, 
+                   location="top_left", 
+                   title="Frustration Type", 
+                   click_policy="mute")
+    p_corr_plot.add_layout(legend)
 
-# # Rotate x-axis labels
-# p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+# Rotate x-axis labels
+p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
 
-# # Create layout for this section
-# plot_controls = row(
-#     sort_select,
-#     sizing_mode="stretch_width",
-#     name="plot_controls"
-# )
+# Create layout for this section
+plot_controls = row(
+    sort_select,
+    sizing_mode="stretch_width",
+    name="plot_controls"
+)
 
-# correlation_layout = column(
-#     plot_controls,
-#     p_corr_plot,
-#     sizing_mode="stretch_width",
-#     name="correlation_layout"
-# )
+correlation_layout = column(
+    plot_controls,
+    p_corr_plot,
+    sizing_mode="stretch_width",
+    name="correlation_layout"
+)
 
 ###############################################################################
 # SECTION 8: UI Components and Static Content
