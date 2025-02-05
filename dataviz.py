@@ -1282,15 +1282,15 @@ def lowess_smoothing(x, y, frac=0.1, it=3):
 
 def create_scatter_plot(x_series, y_series, title, color):
     """Creates a scatter plot with proper sizing and formatting."""
-    # Calculate width based on viewport
     p_sc = figure(
-        sizing_mode='scale_both',
+        sizing_mode="stretch_both",
         aspect_ratio=1,
-        width=350,  # Base width that will scale
-        height=350, # Base height that will scale
+        min_width=350,
+        min_height=350,
         title=title,
         tools="pan,box_zoom,reset,save",
         active_drag="box_zoom",
+        active_scroll=None,
         toolbar_location='right'
     )
     
@@ -1347,18 +1347,8 @@ def build_frustration_comparison_20F(filepath):
     (x_r2, y_r2) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP2'])
     (x_ev, y_ev) = lowess_smoothing(data['AlnIndex'], data['EvolFrust'])
 
-    # Create main line plot container
-    main_container = Div(
-        text=f"""
-        <div style="width: 95vw; display: flex; justify-content: center; align-items: center; margin: 20px auto; max-width: 1200px;">
-            <div style="width: 100%;" id="main_plot_container"></div>
-        </div>
-        """,
-        sizing_mode='stretch_width'
-    )
-
     p_main = figure(
-        sizing_mode='scale_both',
+        sizing_mode='stretch_width',
         height=400,
         tools="pan,box_zoom,wheel_zoom,reset,save",
         active_drag="box_zoom",
@@ -1400,17 +1390,22 @@ def build_frustration_comparison_20F(filepath):
                            "EvolFrust vs REP1 B-Factor", EVOL_COLOR)]
     ]
 
-    scatter_grid = gridplot(scatter_plots, 
-                          toolbar_location='right',
-                          sizing_mode='scale_width')
+    scatter_grid = gridplot(
+        scatter_plots,
+        toolbar_location='right',
+        sizing_mode="stretch_width"
+    )
 
     # Create B-Factor rank scatter plot
     p_bf_rank = figure(
-        sizing_mode='stretch_width',
-        height=400,
+        sizing_mode="stretch_both",
+        aspect_ratio=1,
+        min_width=350,
+        min_height=350,
         title="REP1 vs REP2 B-Factor (Rank)",
         tools="pan,box_zoom,wheel_zoom,reset,save",
-        active_drag="box_zoom"
+        active_drag="box_zoom",
+        active_scroll=None
     )
     
     p_bf_rank.xaxis.axis_label = "REP1 B-Factor Rank"
@@ -1435,7 +1430,8 @@ def build_frustration_comparison_20F(filepath):
         p_main,
         scatter_grid,
         p_bf_rank,
-        sizing_mode='stretch_width'
+        sizing_mode="stretch_width",
+        styles={'width': '100%'}
     )
     
     return final_layout
