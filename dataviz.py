@@ -1283,16 +1283,18 @@ def lowess_smoothing(x, y, frac=0.1, it=3):
 def create_scatter_plot(x_series, y_series, title, color):
     """Creates a scatter plot with proper sizing and formatting."""
     p_sc = figure(
-        sizing_mode="stretch_both",
-        aspect_ratio=1,
-        min_width=350,
-        min_height=350,
+        sizing_mode="scale_both",
+        width=350,
+        height=350,
         title=title,
-        tools="pan,box_zoom,wheel_zoom,reset,save",
+        tools="pan,box_zoom,reset,save",
         active_drag="box_zoom",
-        active_scroll=None,
-        toolbar_location=None
+        toolbar_location='right'
     )
+
+    # Add padding to the plot
+    p_sc.min_border_left = 50
+    p_sc.min_border_right = 50
     
     # Drop NA values
     df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
@@ -1308,29 +1310,20 @@ def create_scatter_plot(x_series, y_series, title, color):
     df_scat['rx_norm'] = (df_scat['rx'] - rx_min) / (rx_max - rx_min + 1e-12)
     df_scat['ry_norm'] = (df_scat['ry'] - ry_min) / (ry_max - ry_min + 1e-12)
 
-    # Create scatter plot with proper marker size
+    # Create scatter plot
     sc_source = ColumnDataSource(df_scat)
-    p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, 
-                size=8, color=color, alpha=0.6)
+    p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
 
     # Add regression line
-    from scipy.stats import spearmanr, linregress
     rho, pval = spearmanr(df_scat['x'], df_scat['y'])
     slope, intercept, _, _, _ = linregress(df_scat['rx_norm'], df_scat['ry_norm'])
     x_line = np.linspace(0, 1, 50)
     y_line = slope * x_line + intercept
-    p_sc.line(x_line, y_line, line_dash='dashed', color='gray', line_width=2)
+    p_sc.line(x_line, y_line, line_dash='dashed', color='gray')
 
-    # Update plot properties
     p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
     p_sc.xaxis.axis_label = "B-factor Rank"
     p_sc.yaxis.axis_label = "Frustration Rank"
-    
-    # Set proper axis ranges
-    p_sc.x_range.start = -0.05
-    p_sc.x_range.end = 1.05
-    p_sc.y_range.start = -0.05
-    p_sc.y_range.end = 1.05
     
     return p_sc
     
@@ -1415,7 +1408,8 @@ def build_frustration_comparison_20F(filepath):
     p_main.legend.click_policy = "hide"
 
     # Create scatter plots
-    scatter_plots = [
+    # Create scatter plots arranged in a grid
+    plots = [
         [create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP2'],
                            "REP2 ExpFrust vs REP2 B-Factor", REP2_COLOR),
          create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP1'],
@@ -1430,19 +1424,12 @@ def build_frustration_comparison_20F(filepath):
                            "EvolFrust vs REP1 B-Factor", EVOL_COLOR)]
     ]
 
-    # Create layout for scatter plots
+    # Create gridplot with proper spacing and sizing
     scatter_grid = gridplot(
-        scatter_plots,
-        toolbar_location=None,
-        sizing_mode="scale_both",
-        merge_tools=False
-    )
-
-    # Wrap the grid in a proper container
-    scatter_container = column(
-        scatter_grid,
+        plots,
+        toolbar_location='right',
         sizing_mode="stretch_width",
-        styles={'width': '100%', 'margin': '0 auto'}
+        spacing=20
     )
 
     # Create B-Factor rank scatter plot
@@ -1475,13 +1462,15 @@ def build_frustration_comparison_20F(filepath):
     p_bf_rank.title.text += f"\nρ={rho_bf:.3f}, p={pval_bf:.1e}"
 
     # Combine all plots into final layout
-    # Combine all plots into final layout
+    # Wrap everything in a container with proper sizing
     final_layout = column(
         p_main,
-        scatter_container,
+        Div(text="<br>"), # Add some spacing
+        scatter_grid,
+        Div(text="<br>"), # Add some spacing
         p_bf_rank,
         sizing_mode="stretch_width",
-        styles={'width': '100%', 'margin': '0 auto', 'align-items': 'center'}
+        styles={'width': '100%', 'margin': '0 auto'}
     )
     
     return final_layout
