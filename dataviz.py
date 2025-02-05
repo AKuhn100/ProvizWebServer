@@ -1607,7 +1607,7 @@ scatter_row = row(
 # Create a sub-column for the 20F UI
 visualization_section_20F = column(
     Div(text="<h2>20F Frustration Comparison</h2>"),
-    select_file_20F,
+    select_file,
     layout_20F_display,  # The column we update when select_file_20F changes
     sizing_mode='stretch_width'
 )
