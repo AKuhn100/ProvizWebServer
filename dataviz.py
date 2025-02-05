@@ -1230,286 +1230,6 @@ correlation_layout = column(
 )
 
 ###############################################################################
-# SECTION 7A: 20F Data Processing and Multi-Figure Layout
-###############################################################################
-
-import statsmodels.api as sm  # for LOWESS smoothing
-from bokeh.plotting import figure
-from bokeh.models import ColumnDataSource, Div, Select
-from bokeh.layouts import column, row, gridplot
-from scipy.stats import spearmanr, linregress
-
-# --- Directory & file listing for 20F ---
-DATA_DIR_20F = "summary_data_20F"
-files_20F = sorted(f for f in os.listdir(DATA_DIR_20F) if f.startswith("summary_") and f.endswith(".txt"))
-
-# Colors: Dark-red for REP1, Light-red for REP2, Green for Evol
-REP1_COLOR = "#8B0000"
-REP2_COLOR = "#FF4444"
-EVOL_COLOR = "#4DAF4A"
-
-def read_frustration_file_20F(filepath):
-    """Reads and processes 20F summary file."""
-    df = pd.read_csv(filepath, sep='\t', na_values=['n/a', 'nAN'])
-
-    rep1_df = pd.DataFrame({
-        'AlnIndex': df['AlnIndex'],
-        'Residue': df['Residue'],
-        'SecondaryStructure': df.get('SecondaryStructure_EXP_FRUST_1', np.nan),
-        'B_Factor': pd.to_numeric(df['B_FACTOR_1'], errors='coerce'),
-        'ExpFrust': pd.to_numeric(df['EXP_FRUST_1'], errors='coerce')
-    })
-
-    rep2_df = pd.DataFrame({
-        'AlnIndex': df['AlnIndex'],
-        'Residue': df['Residue'],
-        'SecondaryStructure': df.get('SecondaryStructure_EXP_FRUST_2', np.nan),
-        'B_Factor': pd.to_numeric(df['B_FACTOR_2'], errors='coerce'),
-        'ExpFrust': pd.to_numeric(df['EXP_FRUST_2'], errors='coerce')
-    })
-
-    evol_frust = pd.to_numeric(df['EVOL_FRUST'], errors='coerce')
-    return rep1_df, rep2_df, evol_frust
-
-def lowess_smoothing(x, y, frac=0.1, it=3):
-    """Performs LOWESS smoothing on input data."""
-    mask = ~(pd.isna(x) | pd.isna(y))
-    x_clean = x[mask]
-    y_clean = y[mask]
-    if len(x_clean) < 2:
-        return np.array([]), np.array([])
-    z = sm.nonparametric.lowess(y_clean, x_clean, frac=frac, it=it, return_sorted=False)
-    return x_clean.values, z
-
-def create_scatter_plot(x_series, y_series, title, color):
-    """Creates a scatter plot with proper sizing and formatting."""
-    from scipy.stats import spearmanr, linregress
-    
-    p_sc = figure(
-        width=350,
-        height=350,
-        title=title,
-        tools="pan,box_zoom,reset,save",
-        active_drag="box_zoom",
-        toolbar_location='right'
-    )
-
-    # Add padding
-    p_sc.min_border_left = 40
-    p_sc.min_border_right = 40
-    p_sc.min_border_top = 40
-    p_sc.min_border_bottom = 40
-    
-    # Drop NA values
-    df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
-    if len(df_scat) < 2:
-        p_sc.title.text += " (No data)"
-        return p_sc
-    
-    # Rank transform & normalize
-    df_scat['rx'] = df_scat['x'].rank()
-    df_scat['ry'] = df_scat['y'].rank()
-    rx_min, rx_max = df_scat['rx'].min(), df_scat['rx'].max()
-    ry_min, ry_max = df_scat['ry'].min(), df_scat['ry'].max()
-    df_scat['rx_norm'] = (df_scat['rx'] - rx_min) / (rx_max - rx_min + 1e-12)
-    df_scat['ry_norm'] = (df_scat['ry'] - ry_min) / (ry_max - ry_min + 1e-12)
-
-    # Create scatter plot
-    sc_source = ColumnDataSource(df_scat)
-    p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
-
-    # Add regression line
-    rho, pval = spearmanr(df_scat['x'], df_scat['y'])
-    slope, intercept, _, _, _ = linregress(df_scat['rx_norm'], df_scat['ry_norm'])
-    x_line = np.linspace(0, 1, 50)
-    y_line = slope * x_line + intercept
-    p_sc.line(x_line, y_line, line_dash='dashed', color='gray')
-
-    p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
-    p_sc.xaxis.axis_label = "B-factor Rank"
-    p_sc.yaxis.axis_label = "Frustration Rank"
-    
-    return p_sc
-    
-    # Drop NA values
-    df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
-    if len(df_scat) < 2:
-        p_sc.title.text += " (No data)"
-        return p_sc
-    
-    # Rank transform & normalize
-    df_scat['rx'] = df_scat['x'].rank()
-    df_scat['ry'] = df_scat['y'].rank()
-    rx_min, rx_max = df_scat['rx'].min(), df_scat['rx'].max()
-    ry_min, ry_max = df_scat['ry'].min(), df_scat['ry'].max()
-    df_scat['rx_norm'] = (df_scat['rx'] - rx_min) / (rx_max - rx_min + 1e-12)
-    df_scat['ry_norm'] = (df_scat['ry'] - ry_min) / (ry_max - ry_min + 1e-12)
-
-    # Create scatter plot
-    sc_source = ColumnDataSource(df_scat)
-    p_sc.scatter('rx_norm', 'ry_norm', source=sc_source, size=6, color=color, alpha=0.6)
-
-    # Add regression line
-    from scipy.stats import spearmanr, linregress
-    rho, pval = spearmanr(df_scat['x'], df_scat['y'])
-    slope, intercept, _, _, _ = linregress(df_scat['rx_norm'], df_scat['ry_norm'])
-    x_line = np.linspace(0, 1, 50)
-    y_line = slope * x_line + intercept
-    p_sc.line(x_line, y_line, line_dash='dashed', color='gray')
-
-    # Update plot properties
-    p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
-    p_sc.xaxis.axis_label = "B-factor Rank"
-    p_sc.yaxis.axis_label = "Frustration Rank"
-    
-    return p_sc
-
-def build_frustration_comparison_20F(filepath):
-    """Creates the complete 20F visualization layout."""
-    
-    # Load and process data
-    rep1_df, rep2_df, evol_frust = read_frustration_file_20F(filepath)
-    merged = rep1_df.merge(rep2_df, on='AlnIndex', suffixes=('_REP1','_REP2'))
-    merged['EvolFrust'] = evol_frust
-
-    required = ['ExpFrust_REP1','ExpFrust_REP2','EvolFrust','B_Factor_REP1','B_Factor_REP2']
-    valid_mask = merged[required].notna().all(axis=1)
-    data = merged[valid_mask].copy()
-    
-    if data.empty:
-        return column(figure(height=250, sizing_mode='stretch_width', title="No valid data in file."))
-
-    # Create main line plot
-    (x_r1, y_r1) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP1'])
-    (x_r2, y_r2) = lowess_smoothing(data['AlnIndex'], data['ExpFrust_REP2'])
-    (x_ev, y_ev) = lowess_smoothing(data['AlnIndex'], data['EvolFrust'])
-
-    p_main = figure(
-        sizing_mode='stretch_width',
-        height=400,
-        tools="pan,box_zoom,wheel_zoom,reset,save",
-        active_drag="box_zoom",
-        title="20F Frustration Comparison: REP1 vs REP2"
-    )
-    
-    p_main.xaxis.axis_label = "Residue Number"
-    p_main.yaxis.axis_label = "Frustration"
-
-    src_main = ColumnDataSource(data=dict(
-        x_r1=x_r1, y_r1=y_r1,
-        x_r2=x_r2, y_r2=y_r2,
-        x_ev=x_ev, y_ev=y_ev
-    ))
-
-    p_main.line('x_r1', 'y_r1', source=src_main, color=REP1_COLOR, 
-                line_width=3, legend_label="REP1 Experimental")
-    p_main.line('x_r2', 'y_r2', source=src_main, color=REP2_COLOR, 
-                line_width=3, line_dash='dashed', legend_label="REP2 Experimental")
-    p_main.line('x_ev', 'y_ev', source=src_main, color=EVOL_COLOR, 
-                line_width=2, line_dash='dotdash', legend_label="Evolutionary")
-    
-    p_main.legend.location = "top_left"
-    p_main.legend.click_policy = "hide"
-
-    # Create scatter plots
-    # Create scatter plots arranged in a grid
-    plots = [
-        [create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP2'],
-                           "REP2 ExpFrust vs REP2 B-Factor", REP2_COLOR),
-         create_scatter_plot(data['B_Factor_REP2'], data['ExpFrust_REP1'],
-                           "REP1 ExpFrust vs REP2 B-Factor", REP1_COLOR),
-         create_scatter_plot(data['B_Factor_REP2'], data['EvolFrust'],
-                           "EvolFrust vs REP2 B-Factor", EVOL_COLOR)],
-        [create_scatter_plot(data['B_Factor_REP1'], data['ExpFrust_REP2'],
-                           "REP2 ExpFrust vs REP1 B-Factor", REP2_COLOR),
-         create_scatter_plot(data['B_Factor_REP1'], data['ExpFrust_REP1'],
-                           "REP1 ExpFrust vs REP1 B-Factor", REP1_COLOR),
-         create_scatter_plot(data['B_Factor_REP1'], data['EvolFrust'],
-                           "EvolFrust vs REP1 B-Factor", EVOL_COLOR)]
-    ]
-
-    # Add spacing through padding on each plot
-    for row in plots:
-        for plot in row:
-            plot.min_border = 20
-
-    # Create gridplot with proper sizing
-    scatter_grid = gridplot(
-        plots,
-        toolbar_location='right',
-        sizing_mode="stretch_width"
-    )
-
-    # Create B-Factor rank scatter plot
-    p_bf_rank = figure(
-        sizing_mode="stretch_both",
-        aspect_ratio=1,
-        min_width=350,
-        min_height=350,
-        title="REP1 vs REP2 B-Factor (Rank)",
-        tools="pan,box_zoom,wheel_zoom,reset,save",
-        active_drag="box_zoom",
-        active_scroll=None
-    )
-    
-    p_bf_rank.xaxis.axis_label = "REP1 B-Factor Rank"
-    p_bf_rank.yaxis.axis_label = "REP2 B-Factor Rank"
-
-    bf1_rank = data['B_Factor_REP1'].rank()
-    bf2_rank = data['B_Factor_REP2'].rank()
-    source_bfrank = ColumnDataSource(dict(bf1_rank=bf1_rank, bf2_rank=bf2_rank))
-    p_bf_rank.scatter('bf1_rank', 'bf2_rank', source=source_bfrank, 
-                     color="purple", size=6, alpha=0.6)
-
-    # Add regression line to B-Factor plot
-    rho_bf, pval_bf = spearmanr(bf1_rank, bf2_rank)
-    slope, intercept, _, _, _ = linregress(bf1_rank, bf2_rank)
-    x_line = np.linspace(bf1_rank.min(), bf1_rank.max(), 50)
-    y_line = slope * x_line + intercept
-    p_bf_rank.line(x_line, y_line, line_dash='dashed', color='gray')
-    p_bf_rank.title.text += f"\nρ={rho_bf:.3f}, p={pval_bf:.1e}"
-
-    # Combine all plots into final layout
-    # Wrap everything in a container with proper sizing
-    final_layout = column(
-        p_main,
-        Div(text="<br>"), # Add some spacing
-        scatter_grid,
-        Div(text="<br>"), # Add some spacing
-        p_bf_rank,
-        sizing_mode="stretch_width",
-        styles={'width': '100%', 'margin': '0 auto'}
-    )
-    
-    return final_layout
-
-# Create selection widget and layout
-select_file_20F = Select(
-    title="Select a 20F summary file:",
-    value=files_20F[0] if files_20F else "",
-    options=files_20F
-)
-
-layout_20F_display = column()
-
-def update_20F_plot(attr, old, new):
-    """Updates the plot when a new file is selected."""
-    filename = select_file_20F.value
-    if not filename:
-        layout_20F_display.children = []
-        return
-    fullpath = os.path.join(DATA_DIR_20F, filename)
-    new_layout = build_frustration_comparison_20F(fullpath)
-    layout_20F_display.children = [new_layout]
-
-select_file_20F.on_change('value', update_20F_plot)
-
-# Initialize with first file if available
-if files_20F:
-    init_path = os.path.join(DATA_DIR_20F, files_20F[0])
-    layout_20F_display.children = [build_frustration_comparison_20F(init_path)]
-    
-###############################################################################
 # SECTION 8: UI Components and Static Content
 # 
 # This section contains:
@@ -1622,68 +1342,61 @@ custom_styles = Div(text="""
 # SECTION 9: Final Layout Assembly
 # 
 # This section contains:
-#  - Final layout configuration
-#  - Component assembly (all plots & controls)
-#  - Document setup (curdoc)
+# - Final layout configuration
+# - Component assembly
+# - Document setup
 #
-# Dependencies: 
-#  - All widgets (select_file, window_slider, select_file_20F, etc.) 
-#  - All figure objects (p, p_scatter_exp, p_scatter_af, p_scatter_evol, p_violin, p_corr_plot)
-#  - The 'visualization_section_20F' setup (with build_frustration_comparison_20F)
-#  - data_table, controls_layout, etc.
+# Dependencies: All previous sections must be fully loaded
+# IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
 ###############################################################################
 
-from bokeh.layouts import column, row
-
-# 1) Build scatter subplots with regression info in columns
+# Scatter Plots Layout with centered regression info
 scatter_col_exp = column(
-    p_scatter_exp,
-    regression_info_exp,
+    p_scatter_exp, 
+    regression_info_exp, 
     sizing_mode="stretch_width",
     styles={
-        'flex': '1 1 350px',
+        'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',
-        'display': 'flex',
-        'flex-direction': 'column'
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
     }
 )
-
 scatter_col_af = column(
-    p_scatter_af,
-    regression_info_af,
+    p_scatter_af, 
+    regression_info_af, 
     sizing_mode="stretch_width",
     styles={
-        'flex': '1 1 350px',
+        'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',
-        'display': 'flex',
-        'flex-direction': 'column'
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
     }
 )
-
 scatter_col_evol = column(
-    p_scatter_evol,
-    regression_info_evol,
+    p_scatter_evol, 
+    regression_info_evol, 
     sizing_mode="stretch_width",
     styles={
-        'flex': '1 1 350px',
+        'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',
-        'display': 'flex',
-        'flex-direction': 'column'
+        'align-items': 'center',    # Center children horizontally
+        'display': 'flex',          # Use flexbox
+        'flex-direction': 'column'  # Stack children vertically
     }
 )
 
-# 2) Combine those columns into a row that can stretch
+# Scatter plots row with consistent spacing
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
     sizing_mode="stretch_width",
     styles={
-        'display': 'flex',
-        'justify-content': 'space-between',
+        'display': 'flex', 
+        'justify-content': 'space-between', 
         'gap': '20px',
         'width': '100%',
         'margin': '20px auto',
@@ -1691,50 +1404,34 @@ scatter_row = row(
     }
 )
 
-# 3) The 20F Frustration Comparison section
-#    (select_file_20F + layout_20F_display is created in SECTION 7A)
-visualization_section_20F = column(
-    Div(text="<h2>20F Frustration Comparison</h2>"),
-    select_file_20F,
-    layout_20F_display,  # The dynamic area that loads the 20F multi-subplot
-    sizing_mode='stretch_width'
-)
-
-# 4) Optionally add a spacer
+# Define a spacer with desired height (e.g., 30 pixels)
 spacer = Div(height=30)
 
-# 5) Combine everything into one main column
-#    This includes:
-#      - The Unity iFrame (unity_container)
-#      - Our original 20R line plot (p)
-#      - The 20R scatter row
-#      - The new 20F section
-#      - The violin plot (p_violin)
-#      - The correlation table controls & data_table
+# Main visualization section
 visualization_section = column(
-    unity_container,     # 3D Protein Visualizer IFrame
-    select_file,         # 20R file selector
-    window_slider,       # MA window slider
-    p,                   # Main 20R line plot
-    scatter_row,         # 20R scatter row
-    visualization_section_20F,  # The new 20F multi-subplot layout
-    spacer,
-    p_violin,            # Violin plot
-    controls_section,    # "Filter Correlation Table"
-    controls_layout,     # The checkbox filters
-    data_table,          # The correlation data table
+    unity_container,  # Unity iframe moved to the top
+    select_file,
+    window_slider,
+    p,
+    scatter_row,     # Add scatter plots back
+    # correlation_layout,
+    spacer,          # Insert spacer here
+    p_violin,
+    controls_section,
+    controls_layout,
+    data_table,
     sizing_mode='stretch_width',
     css_classes=['visualization-section']
 )
 
-# 6) Build the top-level layout with your custom_styles & header
+# Main layout assembly
 main_layout = column(
-    custom_styles,   # any CSS overrides
-    header,          # main header Div
+    custom_styles,
+    header,
     visualization_section,
     sizing_mode='stretch_width'
 )
 
-# 7) Finally, add the layout to the Bokeh document
+# Set up document
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
