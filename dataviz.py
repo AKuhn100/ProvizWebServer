@@ -1230,6 +1230,284 @@ correlation_layout = column(
 )
 
 ###############################################################################
+# SECTION 7.5: Detailed Frustration Plots for summary_data_20F
+###############################################################################
+
+import os
+import pandas as pd
+import numpy as np
+from scipy.stats import spearmanr
+import statsmodels.api as sm
+
+from bokeh.layouts import column, row
+from bokeh.models import ColumnDataSource, HoverTool, Div
+from bokeh.plotting import figure
+
+def lowess_smoothing_20F(x, y, frac=0.1, it=3):
+    """
+    Apply LOWESS smoothing to the data using statsmodels.
+    Returns the original x, plus the smoothed y values (both as numpy arrays).
+    """
+    # Remove NaNs
+    mask = ~(pd.isna(x) | pd.isna(y))
+    if not mask.any():
+        return np.array([]), np.array([])
+
+    x_clean = x[mask].values
+    y_clean = y[mask].values
+
+    # Perform LOWESS
+    smoothed = sm.nonparametric.lowess(y_clean, x_clean, frac=frac, it=it, return_sorted=True)
+    # smoothed is sorted by x; separate columns
+    x_smooth = smoothed[:, 0]
+    y_smooth = smoothed[:, 1]
+    return x_smooth, y_smooth
+
+def parse_summary_file_20F(filepath):
+    """
+    Parse a summary_data_20F file, returning the relevant columns for REP1, REP2,
+    and the evolutionary frustration data. The file is expected to have:
+
+        AlnIndex, Residue,
+        SecondaryStructure_EXP_FRUST_1, SecondaryStructure_EXP_FRUST_2,
+        B_FACTOR_1, B_FACTOR_2,
+        EVOL_FRUST, EXP_FRUST_1, EXP_FRUST_2
+    """
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(f"File not found: {filepath}")
+
+    # Read with tab as the separator
+    df = pd.read_csv(filepath, sep='\t', na_values=['n/a', 'nAN', 'NaN'])
+
+    # Force numeric
+    numeric_cols = ["B_FACTOR_1", "B_FACTOR_2", "EVOL_FRUST", "EXP_FRUST_1", "EXP_FRUST_2"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        else:
+            df[col] = np.nan
+
+    return df
+
+def create_bokeh_frustration_plots_20F(filepath):
+    """
+    Create Bokeh plots that mimic the style of the provided Seaborn/Matplotlib figure,
+    but adapted for the summary_data_20F structure. Returns a layout (row/column)
+    to be included in the main document.
+    """
+    try:
+        df = parse_summary_file_20F(filepath)
+    except Exception as e:
+        # If parsing fails, return an empty layout + a message Div
+        return column(Div(text=f"<b>Error parsing {filepath}</b>: {str(e)}"))
+
+    # --------------------------------------------------------------------------
+    # 1) Data Setup: Merge and Prepare
+    # --------------------------------------------------------------------------
+    # In these summary files, we treat "REP1" data as:
+    #   B_FACTOR_1, EXP_FRUST_1, SecondaryStructure_EXP_FRUST_1
+    # and "REP2" data as:
+    #   B_FACTOR_2, EXP_FRUST_2, SecondaryStructure_EXP_FRUST_2
+    # plus EVOL_FRUST as separate.
+    
+    # Filter out rows that have valid B-factors and frustration measures
+    df_filtered = df.dropna(subset=["B_FACTOR_1", "B_FACTOR_2", "EXP_FRUST_1", "EXP_FRUST_2", "EVOL_FRUST"])
+    if df_filtered.empty:
+        return column(Div(text=f"<b>No valid data to plot in {filepath}</b>"))
+
+    # We'll do LOWESS smoothing on each of the frustration columns vs. AlnIndex
+    x_rep1_exp, y_rep1_exp = lowess_smoothing_20F(df_filtered["AlnIndex"], df_filtered["EXP_FRUST_1"])
+    x_rep2_exp, y_rep2_exp = lowess_smoothing_20F(df_filtered["AlnIndex"], df_filtered["EXP_FRUST_2"])
+    x_evol, y_evol = lowess_smoothing_20F(df_filtered["AlnIndex"], df_filtered["EVOL_FRUST"])
+
+    # Similarly, we can do LOWESS on each B-factor
+    x_rep1_bf, y_rep1_bf = lowess_smoothing_20F(df_filtered["AlnIndex"], df_filtered["B_FACTOR_1"])
+    x_rep2_bf, y_rep2_bf = lowess_smoothing_20F(df_filtered["AlnIndex"], df_filtered["B_FACTOR_2"])
+
+    # --------------------------------------------------------------------------
+    # 2) Main Line Plot for REP1/REP2 Frustration + Evolutionary
+    # --------------------------------------------------------------------------
+    p_main = figure(
+        title=f"Frustration Comparison: REP1 vs REP2 ({os.path.basename(filepath)})",
+        x_axis_label="Residue Number",
+        y_axis_label="Frustration",
+        width=900,
+        height=350,
+        tools="pan,box_zoom,wheel_zoom,reset,save"
+    )
+
+    # Add lines for each:
+    p_main.line(x_rep1_exp, y_rep1_exp, line_width=3, color="red",  alpha=0.8, legend_label="REP1 Exp Frust")
+    p_main.line(x_rep2_exp, y_rep2_exp, line_width=3, color="blue", alpha=0.8, line_dash="dashed", legend_label="REP2 Exp Frust")
+    p_main.line(x_evol,     y_evol,     line_width=2, color="green",alpha=0.8, line_dash="dotted", legend_label="Evol Frust")
+
+    p_main.legend.location = "top_right"
+    p_main.legend.click_policy = "hide"
+    p_main.toolbar.active_drag = "box_zoom"
+
+    # --------------------------------------------------------------------------
+    # 3) Scatter Plots: e.g. B-Factor vs. Frustration Ranks
+    # --------------------------------------------------------------------------
+    # We'll create a helper for generating a single scatter figure
+    def create_scatter_figure(x_data, y_data, x_label, y_label, color, title):
+        # Drop NaNs
+        mask = ~(pd.isna(x_data) | pd.isna(y_data))
+        if not mask.any():
+            return figure(width=400, height=300,
+                          title=f"No Data: {title}")
+
+        xx = x_data[mask]
+        yy = y_data[mask]
+
+        # Compute rank
+        rank_x = xx.rank()
+        rank_y = yy.rank()
+
+        # Convert to a ColumnDataSource
+        source_scatter = ColumnDataSource(data=dict(
+            x=rank_x,
+            y=rank_y,
+            original_x=xx,
+            original_y=yy
+        ))
+
+        p_s = figure(
+            width=400,
+            height=300,
+            title=title,
+            x_axis_label=x_label,
+            y_axis_label=y_label,
+            tools="pan,box_zoom,wheel_zoom,reset,save"
+        )
+        scatter = p_s.scatter('x', 'y', source=source_scatter, size=6,
+                              color=color, alpha=0.6)
+        hover = HoverTool(renderers=[scatter], tooltips=[
+            (x_label, "@original_x{0.2f}"),
+            (y_label, "@original_y{0.2f}"),
+            (f"{x_label} Rank", "@x"),
+            (f"{y_label} Rank", "@y"),
+        ])
+        p_s.add_tools(hover)
+
+        # Spearman correlation
+        rho, pval = spearmanr(xx, yy)
+        # Display on the plot
+        corr_text = Div(
+            text=f"<b>Spearman ρ = {rho:.3f}, p = {pval:.2e}</b>",
+            width=200, height=15, style={'font-size':'10pt', 'color':color}
+        )
+        # Return figure plus the correlation text in a column
+        return column(p_s, corr_text)
+
+    # Build a small grid of scatter figures
+    scatter_layout = row(
+        create_scatter_figure(
+            df_filtered["B_FACTOR_1"], df_filtered["EXP_FRUST_1"],
+            "REP1 B-Factor", "REP1 ExpFrust", "red",
+            "REP1 B-Factor vs REP1 Exp Frust"
+        ),
+        create_scatter_figure(
+            df_filtered["B_FACTOR_2"], df_filtered["EXP_FRUST_2"],
+            "REP2 B-Factor", "REP2 ExpFrust", "blue",
+            "REP2 B-Factor vs REP2 Exp Frust"
+        ),
+        create_scatter_figure(
+            df_filtered["B_FACTOR_1"], df_filtered["EVOL_FRUST"],
+            "REP1 B-Factor", "EvolFrust", "green",
+            "Evol Frust vs REP1 B-Factor"
+        ),
+    )
+
+    # --------------------------------------------------------------------------
+    # 4) Additional Figures: Normalized B-Factor and B-Factor Rank Comparison
+    # --------------------------------------------------------------------------
+
+    # Helper to min-max normalize
+    def min_max_norm(series):
+        smin = series.min()
+        smax = series.max()
+        if smax > smin:
+            return (series - smin) / (smax - smin)
+        else:
+            return series * 0.0
+
+    # Create a figure for normalized B-Factors (LOESS-smoothed)
+    p_bf_norm = figure(
+        title="Normalized Smoothed B-Factor Comparison (REP1 vs REP2)",
+        x_axis_label="Residue Number",
+        y_axis_label="Normalized B-Factor",
+        width=900,
+        height=300,
+        tools="pan,box_zoom,wheel_zoom,reset,save"
+    )
+
+    # Min-max on the smoothed values
+    norm_rep1_bf = min_max_norm(pd.Series(y_rep1_bf))
+    norm_rep2_bf = min_max_norm(pd.Series(y_rep2_bf))
+
+    # Create a ColumnDataSource
+    source_bf_norm = ColumnDataSource(data=dict(
+        x_rep1=x_rep1_bf,
+        y_rep1=norm_rep1_bf,
+        x_rep2=x_rep2_bf,
+        y_rep2=norm_rep2_bf
+    ))
+    p_bf_norm.line('x_rep1', 'y_rep1', source=source_bf_norm,
+                   color="blue", legend_label="REP1 Normalized B-Factor",
+                   line_width=2)
+    p_bf_norm.line('x_rep2', 'y_rep2', source=source_bf_norm,
+                   color="orange", legend_label="REP2 Normalized B-Factor",
+                   line_width=2)
+    p_bf_norm.legend.location = "top_right"
+
+    # B-Factor rank comparison
+    p_bf_rank = figure(
+        title="B-Factor Rank Comparison: REP1 vs REP2",
+        x_axis_label="REP1 B-Factor Rank",
+        y_axis_label="REP2 B-Factor Rank",
+        width=900,
+        height=300,
+        tools="pan,box_zoom,wheel_zoom,reset,save"
+    )
+    # Ranks
+    rank_rep1_bf = df_filtered["B_FACTOR_1"].rank()
+    rank_rep2_bf = df_filtered["B_FACTOR_2"].rank()
+    src_rank_bf = ColumnDataSource(data=dict(
+        x=rank_rep1_bf,
+        y=rank_rep2_bf
+    ))
+    scatter_bf = p_bf_rank.scatter('x', 'y', source=src_rank_bf,
+                                   color="purple", size=7, alpha=0.6,
+                                   marker="diamond")
+
+    hover_bf = HoverTool(renderers=[scatter_bf],
+                         tooltips=[
+                             ("REP1 B-Factor Rank", "@x{0.0f}"),
+                             ("REP2 B-Factor Rank", "@y{0.0f}")
+                         ])
+    p_bf_rank.add_tools(hover_bf)
+
+    # Spearman correlation for B-Factor ranks
+    rho_bf, pval_bf = spearmanr(rank_rep1_bf, rank_rep2_bf)
+    bf_text = Div(
+        text=f"<b>B-Factor Rank Correlation: ρ = {rho_bf:.3f}, p = {pval_bf:.2e}</b>",
+        width=600,
+        style={'font-size':'10pt', 'color':'purple'}
+    )
+
+    # --------------------------------------------------------------------------
+    # 5) Final assembly of this new “Detailed Frustration” layout
+    # --------------------------------------------------------------------------
+    layout_new_section = column(
+        p_main,
+        scatter_layout,
+        p_bf_norm,
+        column(p_bf_rank, bf_text)  # rank scatter + correlation text
+    )
+
+    return layout_new_section
+
+###############################################################################
 # SECTION 8: UI Components and Static Content
 # 
 # This section contains:
@@ -1342,15 +1620,15 @@ custom_styles = Div(text="""
 # SECTION 9: Final Layout Assembly
 # 
 # This section contains:
-# - Final layout configuration
-# - Component assembly
-# - Document setup
+#  - Final layout configuration
+#  - Component assembly
+#  - Document setup
 #
 # Dependencies: All previous sections must be fully loaded
 # IMPORTANT: All widgets (select_file, window_slider, etc.) must be defined before this section
 ###############################################################################
 
-# Scatter Plots Layout with centered regression info
+# --- 1) SCATTER PLOTS LAYOUT (EXISTING) --------------------------------------
 scatter_col_exp = column(
     p_scatter_exp, 
     regression_info_exp, 
@@ -1358,9 +1636,9 @@ scatter_col_exp = column(
     styles={
         'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
     }
 )
 scatter_col_af = column(
@@ -1370,9 +1648,9 @@ scatter_col_af = column(
     styles={
         'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
     }
 )
 scatter_col_evol = column(
@@ -1382,13 +1660,12 @@ scatter_col_evol = column(
     styles={
         'flex': '1 1 350px', 
         'min-width': '350px',
-        'align-items': 'center',    # Center children horizontally
-        'display': 'flex',          # Use flexbox
-        'flex-direction': 'column'  # Stack children vertically
+        'align-items': 'center',
+        'display': 'flex',
+        'flex-direction': 'column'
     }
 )
 
-# Scatter plots row with consistent spacing
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
@@ -1404,19 +1681,49 @@ scatter_row = row(
     }
 )
 
-# Define a spacer with desired height (e.g., 30 pixels)
+# --- 2) SPACER (OPTIONAL) ----------------------------------------------------
 spacer = Div(height=30)
 
-# Main visualization section
+# --- 3) NEW SECTION FOR 20F PLOTS --------------------------------------------
+# We will place these new 20F plots *under* the main line plot for 20R.
+# The function create_bokeh_frustration_plots_20F() should have been defined
+# in Section 7.5 or imported if it's in a separate file.
+
+# Container to hold the new 20F subplots
+frustration_20F_container = column()
+
+def update_20F_plots(attr, old, new):
+    """
+    Callback that updates the 20F frustration plots
+    whenever the user selects a new file in 'select_file'.
+    """
+    # Construct the path inside your summary_data_20F folder
+    filepath_20F = os.path.join("summary_data_20F", new)  # e.g. summary_1bgxT.txt
+    # Create the new layout from your Section 7.5 function
+    layout_20F = create_bokeh_frustration_plots_20F(filepath_20F)
+    # Replace whatever was previously in the container
+    frustration_20F_container.children = [layout_20F]
+
+# Attach the above callback so that changing the selected file also updates the new 20F plots
+select_file.on_change("value", update_20F_plots)
+
+# On startup, populate the container with the default or current file selection
+if select_file.value:
+    initial_path_20F = os.path.join("summary_data_20F", select_file.value)
+    frustration_20F_container.children = [
+        create_bokeh_frustration_plots_20F(initial_path_20F)
+    ]
+
+# --- 4) MAIN VISUALIZATION SECTION -------------------------------------------
 visualization_section = column(
-    unity_container,  # Unity iframe moved to the top
+    unity_container,  # If you are embedding Unity, placed at the top
     select_file,
     window_slider,
-    p,
-    scatter_row,     # Add scatter plots back
-    # correlation_layout,
-    spacer,          # Insert spacer here
-    p_violin,
+    p,                     # The main line plot for 20R
+    frustration_20F_container,  # <--- NEW 20F PLOTS ADDED HERE
+    scatter_row,           # Old scatter plots remain
+    spacer,                # Optional spacer
+    p_violin,              # Violin plot (existing)
     controls_section,
     controls_layout,
     data_table,
@@ -1424,14 +1731,14 @@ visualization_section = column(
     css_classes=['visualization-section']
 )
 
-# Main layout assembly
+# --- 5) FINAL LAYOUT AND DOCUMENT SETUP --------------------------------------
 main_layout = column(
-    custom_styles,
-    header,
+    custom_styles,  # Your custom CSS or styling Div
+    header,         # Some header Div if desired
     visualization_section,
     sizing_mode='stretch_width'
 )
 
-# Set up document
+# Use curdoc() to add the layout to the Bokeh application
 curdoc().add_root(main_layout)
 curdoc().title = "Evolutionary Frustration"
