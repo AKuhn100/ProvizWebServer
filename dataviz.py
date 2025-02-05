@@ -1335,6 +1335,7 @@ def build_frustration_comparison_20F(filepath):
         x_r2=x_r2, y_r2=y_r2,
         x_ev=x_ev, y_ev=y_ev
     ))
+    
     # REP1 ExpFrust (solid)
     p_main.line('x_r1', 'y_r1', source=src_main,
                 color=REP1_COLOR, line_width=3, legend_label="REP1 Experimental")
@@ -1349,19 +1350,21 @@ def build_frustration_comparison_20F(filepath):
     p_main.legend.location = "top_left"
     p_main.legend.click_policy = "hide"
 
-    # 4) Create six scatter subplots for B-factor vs. frustration combos
-    # We'll define a helper to create each scatter with rank + regression line
     def create_scatter_plot(x_series, y_series, title, color):
         """
         Ranks x_series, y_series, plots them with a regression line.
-        Full width is optional; let's do 350x300 for each subplot.
+        Uses sizing_mode='stretch_both' to ensure proper scaling.
         """
         p_sc = figure(
-            width=350, height=300,
+            sizing_mode='stretch_both',
+            aspect_ratio=1,
+            min_width=350,
+            min_height=350,
             title=title,
             tools="pan,box_zoom,reset,save",
             active_drag="box_zoom"
         )
+        
         # Drop NA
         df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
         if len(df_scat) < 2:
@@ -1392,22 +1395,11 @@ def build_frustration_comparison_20F(filepath):
 
         # Add correlation to title
         p_sc.title.text += f"\nSpearman ρ={rho:.3f}, p={pval:.1e}"
-        # Hide axes if desired or rename them
-        p_sc.xaxis.visible = True
-        p_sc.yaxis.visible = True
         p_sc.xaxis.axis_label = "B-factor Rank"
         p_sc.yaxis.axis_label = "Frustration Rank"
         return p_sc
     
-    # We have these combos:
-    #   1) REP2 B-factor vs. REP2 ExpFrust
-    #   2) REP2 B-factor vs. REP1 ExpFrust
-    #   3) REP2 B-factor vs. EvolFrust
-    #   4) REP1 B-factor vs. REP2 ExpFrust
-    #   5) REP1 B-factor vs. REP1 ExpFrust
-    #   6) REP1 B-factor vs. EvolFrust
-
-    # color code: REP1 Exp => REP1_COLOR, REP2 Exp => REP2_COLOR, Evol => EVOL_COLOR
+    # Create all six scatter plots
     p_s1 = create_scatter_plot(
         data['B_Factor_REP2'], data['ExpFrust_REP2'],
         "REP2 ExpFrust vs REP2 B-Factor", REP2_COLOR
@@ -1433,15 +1425,16 @@ def build_frustration_comparison_20F(filepath):
         "EvolFrust vs REP1 B-Factor", EVOL_COLOR
     )
 
-    from bokeh.layouts import gridplot
     scatter_grid = gridplot([[p_s1, p_s2, p_s3],
-                             [p_s4, p_s5, p_s6]], 
-                            sizing_mode='stretch_width')
+                           [p_s4, p_s5, p_s6]], 
+                          sizing_mode='stretch_width',
+                          plot_width=350,
+                          plot_height=350)
 
-    # 5) B-Factor rank scatter (REP1 vs REP2) with regression line
+    # B-Factor rank scatter (REP1 vs REP2) with regression line
     p_bf_rank = figure(
         sizing_mode='stretch_width',
-        height=300,
+        height=400,
         title="REP1 vs REP2 B-Factor (Rank)",
         tools="pan,box_zoom,wheel_zoom,reset,save",
         active_drag="box_zoom"
@@ -1453,10 +1446,9 @@ def build_frustration_comparison_20F(filepath):
     bf2_rank = data['B_Factor_REP2'].rank()
     source_bfrank = ColumnDataSource(dict(bf1_rank=bf1_rank, bf2_rank=bf2_rank))
     p_bf_rank.scatter('bf1_rank', 'bf2_rank', source=source_bfrank, 
-                      color="purple", size=6, alpha=0.6)
+                     color="purple", size=6, alpha=0.6)
 
     # Spearman + regression line
-    from scipy.stats import spearmanr, linregress
     rho_bf, pval_bf = spearmanr(bf1_rank, bf2_rank)
     slope, intercept, _, _, _ = linregress(bf1_rank, bf2_rank)
     x_line = np.linspace(bf1_rank.min(), bf1_rank.max(), 50)
@@ -1464,7 +1456,7 @@ def build_frustration_comparison_20F(filepath):
     p_bf_rank.line(x_line, y_line, line_dash='dashed', color='gray')
     p_bf_rank.title.text += f"\nρ={rho_bf:.3f}, p={pval_bf:.1e}"
 
-    # 6) Final layout: main line plot on top, scatter grid, BF rank at bottom
+    # Final layout: main line plot on top, scatter grid, BF rank at bottom
     final_layout = column(
         p_main,
         scatter_grid,
@@ -1496,7 +1488,7 @@ select_file_20F.on_change('value', update_20F_plot)
 if files_20F:
     init_path = os.path.join(DATA_DIR_20F, files_20F[0])
     layout_20F_display.children = [build_frustration_comparison_20F(init_path)]
-
+    
 ###############################################################################
 # SECTION 8: UI Components and Static Content
 # 
