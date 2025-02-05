@@ -1286,7 +1286,6 @@ def create_scatter_plot(x_series, y_series, title, color):
     from scipy.stats import spearmanr, linregress
     
     p_sc = figure(
-        sizing_mode="scale_both",
         width=350,
         height=350,
         title=title,
@@ -1295,9 +1294,11 @@ def create_scatter_plot(x_series, y_series, title, color):
         toolbar_location='right'
     )
 
-    # Add padding to the plot
-    p_sc.min_border_left = 50
-    p_sc.min_border_right = 50
+    # Add padding
+    p_sc.min_border_left = 40
+    p_sc.min_border_right = 40
+    p_sc.min_border_top = 40
+    p_sc.min_border_bottom = 40
     
     # Drop NA values
     df_scat = pd.DataFrame({'x': x_series, 'y': y_series}).dropna()
@@ -1427,12 +1428,16 @@ def build_frustration_comparison_20F(filepath):
                            "EvolFrust vs REP1 B-Factor", EVOL_COLOR)]
     ]
 
-    # Create gridplot with proper spacing and sizing
+    # Add spacing through padding on each plot
+    for row in plots:
+        for plot in row:
+            plot.min_border = 20
+
+    # Create gridplot with proper sizing
     scatter_grid = gridplot(
         plots,
         toolbar_location='right',
-        sizing_mode="stretch_width",
-        spacing=20
+        sizing_mode="stretch_width"
     )
 
     # Create B-Factor rank scatter plot
