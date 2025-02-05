@@ -1237,6 +1237,7 @@ import statsmodels.api as sm  # for LOWESS smoothing
 from bokeh.plotting import figure
 from bokeh.models import ColumnDataSource, Div, Select
 from bokeh.layouts import column, row, gridplot
+from scipy.stats import spearmanr, linregress
 
 # --- Directory & file listing for 20F ---
 DATA_DIR_20F = "summary_data_20F"
@@ -1282,6 +1283,8 @@ def lowess_smoothing(x, y, frac=0.1, it=3):
 
 def create_scatter_plot(x_series, y_series, title, color):
     """Creates a scatter plot with proper sizing and formatting."""
+    from scipy.stats import spearmanr, linregress
+    
     p_sc = figure(
         sizing_mode="scale_both",
         width=350,
