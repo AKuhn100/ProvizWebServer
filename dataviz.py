@@ -26,7 +26,7 @@ from bokeh.palettes import Category10
 # No dependencies on other sections
 ###############################################################################
 # Local data directory path
-DATA_DIR = "summary_data"  # Directory containing the summary files
+DATA_DIR = "summary_data_20R"  # Directory containing the summary files
 
 # Filename pattern to include only relevant files
 FILE_PATTERN = r"^summary_.+\.txt$"  # Adjust or remove as needed
