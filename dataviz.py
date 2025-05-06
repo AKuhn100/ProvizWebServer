@@ -21,7 +21,7 @@ from bokeh.palettes import Category10
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
 FILE_PATTERN = r"^summary_[A-Za-z0-9]{4}\.txt$"   # only summary_XXXX.txt, 4-char alphanumeric
-+
+
 # If you don’t want a hard-coded default, leave this blank so
 # the first match in the directory is used automatically:
 DEFAULT_FILE = ""
