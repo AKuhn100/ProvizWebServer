@@ -1157,7 +1157,7 @@ description_visualizer = Div(text="""
         <li><strong>Luminosity (EvolFrust):</strong> Indicates evolutionary frustration.</li>
         <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
         <li><strong>Navigation:</strong> <code>W/A/S/D</code>, <code>Shift</code>, <code>Space</code> to move the camera, <code>C</code> to zoom, etc.</li>
-        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. <code>O</code> toggles oscillation or sets height by B-factor in the unfolded state.</li>
+        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. O toggles oscillation or sets height by B-factor in the unfolded state.</li>
         <li><strong>Pause (P):</strong> Pauses the scene so you can select another protein.</li>
     </ul>
 """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
