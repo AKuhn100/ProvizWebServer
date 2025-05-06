@@ -337,7 +337,7 @@ p_scatter_exp = figure(
     title="",
     x_axis_label="Normalized B-Factor",
     y_axis_label="Normalized ExpFrust", # MODIFIED: Specific y-axis label
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"], # Removed default hover
     active_drag="box_zoom",
     active_scroll=None
 )
@@ -349,7 +349,7 @@ p_scatter_af = figure(
     title="",
     x_axis_label="Normalized B-Factor",
     y_axis_label="Normalized AFFrust", # MODIFIED: Specific y-axis label
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"], # Removed default hover
     active_drag="box_zoom",
     active_scroll=None
 )
@@ -361,7 +361,7 @@ p_scatter_evol = figure(
     title="",
     x_axis_label="Normalized B-Factor",
     y_axis_label="Normalized EvolFrust", # MODIFIED: Specific y-axis label
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"], # Removed default hover
     active_drag="box_zoom",
     active_scroll=None
 )
@@ -371,26 +371,9 @@ source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]
 source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], residue=[])) # Added residue
 source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], residue=[])) # Added residue
 
-# Add HoverTool for Scatter Plots (using original values)
-hover_scatter_exp = HoverTool(
-    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig ExpFrust", "@y_orig{0.3f}")],
-    names=['scatter_exp'] # Assign to specific renderer name
-)
-hover_scatter_af = HoverTool(
-    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig AFFrust", "@y_orig{0.3f}")],
-    names=['scatter_af'] # Assign to specific renderer name
-)
-hover_scatter_evol = HoverTool(
-    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig EvolFrust", "@y_orig{0.3f}")],
-    names=['scatter_evol'] # Assign to specific renderer name
-)
 
-p_scatter_exp.add_tools(hover_scatter_exp)
-p_scatter_af.add_tools(hover_scatter_af)
-p_scatter_evol.add_tools(hover_scatter_evol)
-
-
-# Create Div elements for regression info
+# Create Div elements for regression info (No changes needed here)
+# ... (regression_info_exp, _af, _evol definitions remain the same) ...
 regression_info_exp = Div(
     text="",
     styles={
@@ -419,11 +402,40 @@ regression_info_evol = Div(
     sizing_mode="stretch_width"
 )
 
-# Initial scatter glyphs (empty), assign names
-p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][1], alpha=0.7, name='scatter_exp')
-p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7, name='scatter_af')
-p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7, name='scatter_evol')
 
+# Initial scatter glyphs, assign names AND CAPTURE RENDERERS
+# MODIFICATION START
+scatter_renderer_exp = p_scatter_exp.scatter(
+    "x", "y", source=source_scatter_exp, color=Category10[10][1], alpha=0.7, name='scatter_exp'
+)
+scatter_renderer_af = p_scatter_af.scatter(
+    "x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7, name='scatter_af'
+)
+scatter_renderer_evol = p_scatter_evol.scatter(
+    "x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7, name='scatter_evol'
+)
+
+# Define and Add HoverTool AFTER creating the scatter renderers
+# Using the `renderers` attribute correctly
+hover_scatter_exp = HoverTool(
+    renderers=[scatter_renderer_exp], # Use the captured renderer object
+    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig ExpFrust", "@y_orig{0.3f}")]
+    # Removed incorrect 'names' attribute
+)
+hover_scatter_af = HoverTool(
+    renderers=[scatter_renderer_af], # Use the captured renderer object
+    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig AFFrust", "@y_orig{0.3f}")]
+    # Removed incorrect 'names' attribute
+)
+hover_scatter_evol = HoverTool(
+    renderers=[scatter_renderer_evol], # Use the captured renderer object
+    tooltips=[("Residue", "@residue"), ("Orig B-Factor", "@x_orig{0.0f}"), ("Orig EvolFrust", "@y_orig{0.3f}")]
+    # Removed incorrect 'names' attribute
+)
+
+p_scatter_exp.add_tools(hover_scatter_exp)
+p_scatter_af.add_tools(hover_scatter_af)
+p_scatter_evol.add_tools(hover_scatter_evol)
 
 def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
     """
