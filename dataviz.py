@@ -5,7 +5,7 @@ frustration metrics (Experimental, AlphaFold-based, Evolutionary).
 
 Uses PDB IDs for selection. Specific aggregated plots removed.
 
-Color Scheme: B-Factor (Grey), ExpFrust (Red), AFFrust (Blue), EvolFrust (Green).
+Color Scheme: B-Factor (Yellow), ExpFrust (Red), AFFrust (Blue), EvolFrust (Green).
 """
 import os
 import pandas as pd
@@ -37,9 +37,9 @@ FILE_PATTERN = r"^summary_([A-Za-z0-9]{4})\.txt$"
 # Default PDB ID (4-char) - leave blank for automatic selection
 DEFAULT_PDB_ID = "" # Changed from DEFAULT_FILE
 
-# Define New Color Scheme
+# Define New Color Scheme with Yellow B-Factor
 COLOR_SCHEME = {
-    "B_Factor": "#7f7f7f",   # Grey
+    "B_Factor": "#FFD700",   # Yellow (Gold)
     "ExpFrust": "#d62728",   # Red
     "AFFrust":  "#1f77b4",   # Blue
     "EvolFrust":"#2ca02c"    # Green
@@ -626,7 +626,7 @@ for checkbox in checkbox_tests_columns + checkbox_combos_columns:
 # 7) User Interface Components and Final Layout (Preserving original text/order)
 ###############################################################################
 
-# Header Text (Original from the PDB ID version)
+# Header Text (Original from the PDB ID version, updated with B-Factor color)
 header = Div(text=f"""
     <h1>Evolutionary Frustration Analysis</h1>
     <p>
@@ -635,7 +635,7 @@ header = Div(text=f"""
         By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics,
         we aim to validate sequence-derived evolutionary constraints in representing protein flexibility.
         Select a PDB ID from the dropdown menu to view the data. Colors:
-        B-Factor (<span style='color:{COLOR_SCHEME["B_Factor"]};'><b>Grey</b></span>),
+        B-Factor (<span style='color:{COLOR_SCHEME["B_Factor"]};'><b>Yellow</b></span>),
         ExpFrust (<span style='color:{COLOR_SCHEME["ExpFrust"]};'><b>Red</b></span>),
         AFFrust (<span style='color:{COLOR_SCHEME["AFFrust"]};'><b>Blue</b></span>),
         EvolFrust (<span style='color:{COLOR_SCHEME["EvolFrust"]};'><b>Green</b></span>).
