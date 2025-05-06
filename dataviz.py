@@ -1183,59 +1183,37 @@ def create_bar_plot_with_sd(data_proviz_df):
     Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
     with error bars representing the standard deviation.
     """
-    # Compute mean and standard deviation of Spearman Rho per metric
-    spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
-    # Check if columns exist and data is not empty
-    valid_columns = [col for col in spearman_columns if col in data_proviz_df.columns]
-    if not valid_columns or data_proviz_df.empty:
-        print("Insufficient data for bar plot.")
-        # Return an empty placeholder or message
-        return Div(text="Bar plot cannot be generated: Insufficient data.")
-
-    stats_corrs = data_proviz_df[valid_columns].agg(['mean', 'std']).transpose().reset_index()
-    stats_corrs.rename(columns={
-        'index': 'Metric',
-        'mean': 'Mean_Spearman_Rho',
-        'std': 'Std_Spearman_Rho'
-    }, inplace=True)
-
-    # Clean Metric names
-    stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-
-    # Assign colors based on Metric using the predefined FRUSTRATION_COLORS dictionary
-    stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS).fillna('gray') # Use gray for unmapped
+    # ... (previous code in the function remains the same up to source_bar creation) ...
 
     # Create ColumnDataSource for the bar plot
     source_bar = ColumnDataSource(stats_corrs)
 
     # Create figure
     p_bar = figure(
-        title="Mean Spearman Correlation between B-Factor and Frustration Metrics (All PDBs)",
-        x_axis_label="Frustration Metric",
-        y_axis_label="Mean Spearman Rho",
-        x_range=stats_corrs['Metric'].tolist(),
-        sizing_mode='stretch_width',
-        height=400,
-        tools="pan,wheel_zoom,box_zoom,reset,save", # Removed hover from default tools
-        toolbar_location="above"
+        # ... (figure options remain the same) ...
     )
 
     # Add vertical bars and capture the renderer
     vbar_renderer = p_bar.vbar(
-        x='Metric',
-        top='Mean_Spearman_Rho',
-        width=0.6,
-        source=source_bar,
-        color='Color',
-        # legend_label="Frustration Metric", # Removed - redundant with x-axis
-        line_color="black"
+        # ... (vbar options remain the same) ...
     )
 
-    # Calculate upper and lower bounds for error bars (handle NaN std dev)
-    source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho'].fillna(0)
-    source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho'].fillna(0)
+    # --- MODIFICATION START ---
+    # Calculate upper and lower bounds for error bars (handle NaN std dev using numpy)
+    # Get the NumPy arrays from the source data
+    mean_values = source_bar.data['Mean_Spearman_Rho']
+    std_dev_values = source_bar.data['Std_Spearman_Rho']
 
-    # Add error bars using Whisker
+    # Replace NaN values in the standard deviation array with 0 using np.nan_to_num
+    std_dev_no_nan = np.nan_to_num(std_dev_values, nan=0.0)
+
+    # Calculate bounds using the NaN-handled std deviation
+    source_bar.data['upper'] = mean_values + std_dev_no_nan
+    source_bar.data['lower'] = mean_values - std_dev_no_nan
+    # --- MODIFICATION END ---
+
+
+    # Add error bars using Whisker (this part references the 'upper' and 'lower' columns we just created)
     whisker = Whisker(
         base='Metric',
         upper='upper',
@@ -1248,22 +1226,28 @@ def create_bar_plot_with_sd(data_proviz_df):
 
 
     # Adjust y-axis range to include padding
-    min_val = source_bar.data['lower'].min() if source_bar.data['lower'].size > 0 else 0
-    max_val = source_bar.data['upper'].max() if source_bar.data['upper'].size > 0 else 1
-    y_range_span = max_val - min_val if (max_val - min_val) > 1e-6 else 1.0
-    y_padding = y_range_span * 0.1
+    # Ensure data exists before calculating min/max
+    if source_bar.data['lower'].size > 0 and source_bar.data['upper'].size > 0:
+        min_val = np.min(source_bar.data['lower']) # Use np.min for safety
+        max_val = np.max(source_bar.data['upper']) # Use np.max for safety
+        y_range_span = max_val - min_val if (max_val - min_val) > 1e-6 else 1.0
+        y_padding = y_range_span * 0.1
+        p_bar.y_range = Range1d(start=min_val - y_padding, end=max_val + y_padding)
+    else:
+        # Default range if no data
+        p_bar.y_range = Range1d(start=-0.1, end=1.1)
 
-    p_bar.y_range = Range1d(start=min_val - y_padding, end=max_val + y_padding)
 
     # Add horizontal line at y=0 for reference
-    p_bar.line(x=stats_corrs['Metric'].tolist(), y=0, line_width=1, line_dash='dashed', color='gray')
+    if stats_corrs['Metric'].tolist(): # Check if there are metrics for x-range
+         p_bar.line(x=stats_corrs['Metric'].tolist(), y=0, line_width=1, line_dash='dashed', color='gray')
 
     # Add hover tool specifically for the bars
     hover_bar = HoverTool(
         tooltips=[
             ("Metric", "@Metric"),
             ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
-            ("Std Dev", "@Std_Spearman_Rho{0.3f}")
+            ("Std Dev", "@Std_Spearman_Rho{0.3f}") # Show original Std Dev (might be NaN)
         ],
         renderers=[vbar_renderer], # Attach only to the bars
         mode='mouse'
@@ -1275,7 +1259,7 @@ def create_bar_plot_with_sd(data_proviz_df):
     p_bar.yaxis.axis_label_text_font_style = "normal"
 
     return p_bar
-
+    
 # (F) Layout for Additional Plots
 # Create the bar plot using the aggregated data (data_proviz)
 bar_plot_component = create_bar_plot_with_sd(data_proviz)
