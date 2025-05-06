@@ -1,99 +1,147 @@
+# -*- coding: utf-8 -*-
+"""
+Bokeh application for visualizing protein flexibility (B-Factor) and various
+frustration metrics (Experimental, AlphaFold-based, Evolutionary).
+
+This script reads summary data files (summary_XXXX.txt), extracts the 4-character
+PDB ID (XXXX), processes the data (smoothing, normalization), calculates
+correlations, and presents the results through interactive Bokeh plots
+and a data table, using the PDB ID for identification. It also includes an
+embedded iframe for a Unity visualizer.
+"""
+
 import os
 import pandas as pd
 import numpy as np
 import re
 from scipy.stats import spearmanr, linregress
+from math import pi # For label rotation
 
+# Bokeh imports
 from bokeh.io import curdoc
 from bokeh.models import (
     ColumnDataSource, Select, CheckboxGroup, Div, Spacer,
-    DataTable, TableColumn, NumberFormatter, HoverTool, 
+    DataTable, TableColumn, NumberFormatter, HoverTool,
     GlyphRenderer, Slider, Whisker, Label, Range1d
 )
 from bokeh.plotting import figure
 from bokeh.layouts import column, row, layout
 from bokeh.palettes import Category10
+from bokeh.transform import jitter # For dot plot
 
 ###############################################################################
 # 1) Configuration
 ###############################################################################
-# Local data directory path
+# Define the directory where the summary data files are located.
+# IMPORTANT: This directory must exist and contain the data files for the script to run.
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
-FILE_PATTERN = r"^summary_[A-Za-z0-9]{4}\.txt$"   # only summary_XXXX.txt, 4-char alphanumeric
+# Define the regular expression pattern to match the summary filenames
+# and capture the 4-character ID.
+FILE_PATTERN = r"^summary_([A-Za-z0-9]{4})\.txt$" # Captures the ID in group 1
 
-# If you don’t want a hard-coded default, leave this blank so
-# the first match in the directory is used automatically:
-DEFAULT_FILE = ""
+# Define a default PDB ID to load initially.
+# If left blank (""), the script will load the first PDB ID found.
+# This should be the 4-character ID, not the full filename.
+DEFAULT_PDB_ID = ""
 
 ###############################################################################
 # 2) Helpers: Data Parsing and Aggregation
 ###############################################################################
+
+def extract_pdb_id(filename):
+    """Extracts the 4-character PDB ID from the filename."""
+    match = re.match(FILE_PATTERN, filename)
+    if match:
+        return match.group(1) # Return the captured group
+    return None # Return None if pattern doesn't match
+
 def moving_average(arr, window_size=5):
     """
-    Computes a simple moving average on a float array.
-    Returns an equally sized array with np.nan where insufficient data exists.
+    Computes a simple moving average on a 1D numpy array containing floats.
+
+    Args:
+        arr (np.array): The input array of numbers.
+        window_size (int): The size of the moving average window (should be odd).
+
+    Returns:
+        np.array: An array of the same size as input, containing the moving average.
+                  Edges where the window cannot be centered will have np.nan.
     """
     n = len(arr)
-    out = np.full(n, np.nan)
-    halfw = window_size // 2
+    out = np.full(n, np.nan)  # Initialize output array with NaNs
+    halfw = window_size // 2 # Integer division to find half window size
 
     for i in range(n):
+        # Skip calculation if the current point is NaN
         if np.isnan(arr[i]):
             continue
+        # Define window boundaries, handling edges
         start = max(0, i - halfw)
         end = min(n, i + halfw + 1)
         window = arr[start:end]
+        # Filter out NaNs within the window
         good = window[~np.isnan(window)]
+        # Calculate mean if there are valid numbers in the window
         if len(good) > 0:
             out[i] = np.mean(good)
     return out
 
 def parse_summary_file(local_path):
     """
-    Parses a summary file and returns original and processed DataFrames along with correlations.
+    Parses a single summary file (.txt, tab-separated).
+
+    Reads the file, checks for required columns, handles missing values ('n/a'),
+    and computes Spearman correlations between B-Factor and frustration metrics
+    on the original data. Smoothing and normalization happen later in update_plot.
+
+    Args:
+        local_path (str): The full path to the summary file.
+
+    Returns:
+        tuple: Contains:
+            - pd.DataFrame: Original data read from the file.
+            - dict: Spearman correlations {(metricA, metricB): (rho, pval)}.
+            Returns (None, {}) if the file is invalid or parsing fails.
     """
+    # List of columns required in the input file
     required_cols = ["AlnIndex", "Residue", "B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
 
+    # Check if the file exists
     if not os.path.isfile(local_path):
         print(f"File not found: {local_path}")
-        return None, None, {}
+        return None, {}
 
+    # Try reading the tab-separated file
     try:
         df = pd.read_csv(local_path, sep='\t')
     except Exception as e:
         print(f"Skipping {local_path}: failed to parse data. Error: {e}")
-        return None, None, {}
+        return None, {}
 
-    # Check for required columns
+    # Validate required columns
     if not set(required_cols).issubset(df.columns):
-        print(f"Skipping {local_path}: missing required columns.")
-        return None, None, {}
+        print(f"Skipping {local_path}: missing required columns ({required_cols}). Found: {df.columns.tolist()}")
+        return None, {}
 
-    # Replace 'n/a' with NaN and convert to float
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+    # --- Data Cleaning and Preparation ---
+    # Columns to process (convert 'n/a' to NaN)
+    process_cols = ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
 
+    # Replace 'n/a' strings with actual NaN values and convert columns to numeric
+    for col in process_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce') # 'coerce' turns parsing errors into NaN
+
+    # Keep a copy of the original data
     df_original = df.copy()
-    df_for_plot = df.copy()
 
-    # Apply moving average
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        df_for_plot[col] = moving_average(df_for_plot[col].values, window_size=5)
-
-    # Min-Max normalization
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        valid = ~df_for_plot[col].isna()
-        if valid.any():
-            col_min = df_for_plot.loc[valid, col].min()
-            col_max = df_for_plot.loc[valid, col].max()
-            if col_max > col_min:
-                df_for_plot[col] = (df_for_plot[col] - col_min) / (col_max - col_min)
-
-    # Compute Spearman correlations on original data
+    # --- Spearman Correlation Calculation (on Original Data) ---
     corrs = {}
-    sub = df_original.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    # Drop rows where any of the key metrics are NaN for correlation calculation
+    sub = df_original.dropna(subset=process_cols)
+
     if not sub.empty:
+        # Define pairs of metrics for correlation analysis
         combos = [
             ("B_Factor", "ExpFrust"),
             ("B_Factor", "AFFrust"),
@@ -103,98 +151,148 @@ def parse_summary_file(local_path):
             ("AFFrust",  "EvolFrust"),
         ]
         for (mA, mB) in combos:
+            # Check if there's enough variance in both columns to calculate correlation
             if sub[mA].nunique() < 2 or sub[mB].nunique() < 2:
-                rho, pval = np.nan, np.nan
+                rho, pval = np.nan, np.nan # Not enough data variance
             else:
+                # Calculate Spearman's rank correlation coefficient (rho) and p-value
                 rho, pval = spearmanr(sub[mA], sub[mB])
-            corrs[(mA, mB)] = (rho, pval)
+            corrs[(mA, mB)] = (rho, pval) # Store results
 
-    return df_original, df_for_plot, corrs
+    # Return only original df and correlations. Plot df is generated in update_plot.
+    return df_original, corrs
 
 def remove_regression_renderers(fig):
     """
-    Removes all renderers from the given figure whose names start with 'regression_'.
-    Safely handles cases where the renderer or its name might be None.
+    Removes all renderers (like lines, hover tools) from a Bokeh figure
+    whose 'name' attribute starts with 'regression_'. Also removes associated
+    hover tools.
+
+    Args:
+        fig (bokeh.plotting.figure): The figure to modify.
     """
-    new_renderers = []
+    renderers_to_keep = []
+    renderers_to_remove_names = set()
+
+    # Identify renderers to remove
     for r in fig.renderers:
-        # Check if the renderer is not None
-        if r is not None:
-            # Safely get the name attribute; default to empty string if not present
-            name = getattr(r, 'name', '')
-            # Ensure name is a string before calling startswith
-            if isinstance(name, str) and name.startswith('regression_'):
-                continue  # Skip renderers related to regression
-        new_renderers.append(r)  # Retain all other renderers
-    fig.renderers = new_renderers
+        renderer_name = getattr(r, 'name', None)
+        if isinstance(renderer_name, str) and renderer_name.startswith('regression_'):
+            renderers_to_remove_names.add(renderer_name)
+        else:
+            renderers_to_keep.append(r)
+
+    # Identify hover tools associated with removed renderers
+    tools_to_keep = []
+    for tool in fig.tools:
+        if isinstance(tool, HoverTool):
+            targets_removed_renderer = False
+            if tool.renderers: # Check if renderers list is not empty/None
+                for r in tool.renderers:
+                     renderer_name = getattr(r, 'name', None)
+                     if renderer_name in renderers_to_remove_names:
+                         targets_removed_renderer = True
+                         break
+            # Also check if the tool itself has a regression-related name
+            tool_name = getattr(tool, 'name', None)
+            if targets_removed_renderer or (isinstance(tool_name, str) and tool_name.startswith('regression_')):
+                continue # Skip this HoverTool
+        tools_to_keep.append(tool)
+
+    fig.renderers = renderers_to_keep
+    fig.tools = tools_to_keep
+
 
 ###############################################################################
 # 3) Load and Aggregate Data from Local Directory
 ###############################################################################
-data_by_file = {}
-all_corr_rows = []
+print(f"Loading data from: {DATA_DIR}")
+# Use PDB ID as the key for the dictionary
+data_by_id = {}         # Dictionary keyed by PDB ID
+all_corr_rows = []      # List to build the global correlation dataframe
 
-# Aggregation lists
-protein_names = []
-avg_bfactors = []
-std_bfactors = []
-spearman_exp = []
-spearman_af = []
-spearman_evol = []
+# Lists for aggregating summary statistics across all proteins
+pdb_ids = []            # List of PDB IDs
+avg_bfactors = []       # List of mean B-Factors per protein
+std_bfactors = []       # List of standard deviation of B-Factors per protein
+spearman_exp = []       # List of Spearman Rho (B-Factor vs ExpFrust) per protein
+spearman_af = []        # List of Spearman Rho (B-Factor vs AFFrust) per protein
+spearman_evol = []      # List of Spearman Rho (B-Factor vs EvolFrust) per protein
 
-# Possible frustration columns
+# Possible frustration column names (used later if needed)
 POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
 
-# Color mapping for plots
+# Color mapping for frustration types used in aggregated plots
+# Using Category10 palette for distinct colors
 FRUSTRATION_COLORS = {
-    "ExpFrust.": Category10[10][0],  # Red
-    "AFFrust.": Category10[10][1],   # Blue
-    "EvolFrust.": Category10[10][2]  # Green
+    "ExpFrust.": Category10[10][1],   # Blue
+    "AFFrust.": Category10[10][2],    # Green
+    "EvolFrust.": Category10[10][3]   # Purple
 }
 
-# Iterate through files
+# Iterate through files in the specified data directory
+found_files = 0
+skipped_files = 0
 for filename in os.listdir(DATA_DIR):
-    if not re.match(FILE_PATTERN, filename):
-        print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
+    # Extract PDB ID using the helper function
+    pdb_id = extract_pdb_id(filename)
+    if not pdb_id:
+        # print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}") # Optional: reduce console noise
+        skipped_files += 1
         continue
 
     file_path = os.path.join(DATA_DIR, filename)
-    df_orig, df_plot, corrs = parse_summary_file(file_path)
+    # Parse the file using the helper function
+    df_orig, corrs = parse_summary_file(file_path)
+
+    # If parsing failed or file was invalid, skip to the next file
     if df_orig is None:
+        skipped_files += 1
         continue
 
-    data_by_file[filename] = {
+    found_files += 1
+    # Store the parsed data in the dictionary, keyed by PDB ID
+    data_by_id[pdb_id] = {
         "df_original": df_orig,
-        "df_for_plot": df_plot,
         "corrs": corrs
     }
 
-    # Collect correlation data
+    # --- Collect data for the global correlation table ---
+    # Use PDB ID instead of filename
     for combo, (rho, pval) in corrs.items():
-        mA, mB = combo
-        all_corr_rows.append([filename, mA, mB, rho, pval])
+        mA, mB = combo # Unpack the metric pair
+        all_corr_rows.append([pdb_id, mA, mB, rho, pval]) # Use pdb_id here
 
-    # Aggregate data for additional plots
+    # --- Aggregate summary statistics for additional plots ---
+    # Calculate mean and std dev of B-Factor (use original data)
     avg_b = df_orig['B_Factor'].mean()
     std_b = df_orig['B_Factor'].std()
 
-    spearman_r_exp = corrs.get(("B_Factor", "ExpFrust"), (np.nan, np.nan))[0]
-    spearman_r_af = corrs.get(("B_Factor", "AFFrust"), (np.nan, np.nan))[0]
-    spearman_r_evol = corrs.get(("B_Factor", "EvolFrust"), (np.nan, np.nan))[0]
+    # Extract specific Spearman correlations (B-Factor vs Frustration metrics)
+    spearman_r_exp = corrs.get(("B_Factor", "ExpFrust"), (np.nan, np.nan))[0] # Get rho
+    spearman_r_af = corrs.get(("B_Factor", "AFFrust"), (np.nan, np.nan))[0]   # Get rho
+    spearman_r_evol = corrs.get(("B_Factor", "EvolFrust"), (np.nan, np.nan))[0] # Get rho
 
-    protein_names.append(filename)
+    # Append aggregated data to lists, using PDB ID
+    pdb_ids.append(pdb_id) # Use pdb_id here
     avg_bfactors.append(avg_b)
     std_bfactors.append(std_b)
     spearman_exp.append(spearman_r_exp)
     spearman_af.append(spearman_r_af)
     spearman_evol.append(spearman_r_evol)
 
-# Correlation DataFrame
-df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
+print(f"Found and processed {found_files} files matching pattern.")
+if skipped_files > 0:
+    print(f"Skipped {skipped_files} files (pattern mismatch or parsing error).")
 
-# Aggregated DataFrame for Additional Plots
+# Create the DataFrame for the correlation table
+# Rename 'Test' column to 'PDB_ID'
+df_all_corr = pd.DataFrame(all_corr_rows, columns=["PDB_ID","MetricA","MetricB","Rho","Pval"])
+
+# Create the DataFrame containing aggregated stats per protein
+# Rename 'Protein' column to 'PDB_ID'
 data_proviz = pd.DataFrame({
-    'Protein': protein_names,
+    'PDB_ID': pdb_ids, # Use pdb_ids here
     'Avg_B_Factor': avg_bfactors,
     'Std_B_Factor': std_bfactors,
     'Spearman_ExpFrust': spearman_exp,
@@ -202,26 +300,28 @@ data_proviz = pd.DataFrame({
     'Spearman_EvolFrust': spearman_evol
 })
 
-# Melt data for plotting
+# --- Prepare data for aggregated scatter plots using pd.melt ---
+# Melt for Avg B-Factor vs Spearman Rho plot
 data_long_avg = data_proviz.melt(
-    id_vars=['Protein', 'Avg_B_Factor'],
-    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
-    var_name='Frust_Type',
-    value_name='Spearman_Rho'
+    id_vars=['PDB_ID', 'Avg_B_Factor'], # Keep these columns (use PDB_ID)
+    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'], # Columns to unpivot
+    var_name='Frust_Type',      # New column for the metric name
+    value_name='Spearman_Rho'    # New column for the correlation value
 )
 
+# Melt for Std Dev B-Factor vs Spearman Rho plot
 data_long_std = data_proviz.melt(
-    id_vars=['Protein', 'Std_B_Factor'],
+    id_vars=['PDB_ID', 'Std_B_Factor'], # Use PDB_ID
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
     var_name='Frust_Type',
     value_name='Spearman_Rho'
 )
 
-# Clean Frust_Type names
+# Clean up the 'Frust_Type' names for better legend labels
 data_long_avg['Frust_Type'] = data_long_avg['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
 
-# Remove rows with NaN correlations
+# Remove rows where Spearman Rho is NaN (cannot be plotted)
 data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
 data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 
@@ -229,66 +329,76 @@ data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
 # 4) Bokeh Application Components
 ###############################################################################
 
-# (A) Main Plot: Smoothed + Normalized Data
+# --- (A) Main Plot: Smoothed + Normalized Data per Protein ---
+# ColumnDataSource: Holds the data for the main line plot. Updated dynamically.
 source_plot = ColumnDataSource(data=dict(
-    x=[],
-    residue=[],
-    b_factor=[],
-    exp_frust=[],
-    af_frust=[],
-    evol_frust=[]
+    x=[],          # AlnIndex (Residue Index)
+    residue=[],    # Residue name (e.g., 'A', 'L')
+    b_factor=[],   # Smoothed, normalized B-Factor
+    exp_frust=[],  # Smoothed, normalized Experimental Frustration
+    af_frust=[],   # Smoothed, normalized AlphaFold Frustration
+    evol_frust=[]  # Smoothed, normalized Evolutionary Frustration
 ))
 
+# Create the main figure object
 p = figure(
-    title="(No Data)",
-    sizing_mode='stretch_width',
-    height=600,
-    tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", 
-    active_scroll=None
+    title="(No PDB ID Selected)", # Title updated dynamically
+    sizing_mode='stretch_width', # Plot width adjusts to container
+    height=600,                 # Fixed height
+    tools=["pan","box_zoom","wheel_zoom","reset","save"], # Available tools
+    active_drag="box_zoom",     # Default drag tool
+    active_scroll="wheel_zoom"  # Enable wheel zoom
 )
 
-# Define separate HoverTools for each metric
+# Define separate HoverTools for each line for clarity
+# Each hover tool is initially associated with no renderers; this is set later.
 hover_bf = HoverTool(
-    renderers=[],
-    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("B-Factor", "@b_factor")],
-    name="hover_b_factor"
+    renderers=[], # Will be linked to the B-Factor line renderer
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("Norm. B-Factor", "@b_factor{0.3f}")], # Tooltip content
+    name="hover_b_factor" # Unique name for the tool
 )
 hover_ef = HoverTool(
-    renderers=[],
-    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("ExpFrust", "@exp_frust")],
+    renderers=[], # Will be linked to the ExpFrust line renderer
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("Norm. ExpFrust", "@exp_frust{0.3f}")],
     name="hover_exp_frust"
 )
 hover_af = HoverTool(
-    renderers=[],
-    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("AFFrust", "@af_frust")],
+    renderers=[], # Will be linked to the AFFrust line renderer
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("Norm. AFFrust", "@af_frust{0.3f}")],
     name="hover_af_frust"
 )
 hover_ev = HoverTool(
-    renderers=[],
-    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("EvolFrust", "@evol_frust")],
+    renderers=[], # Will be linked to the EvolFrust line renderer
+    tooltips=[("Index", "@x"), ("Residue", "@residue"), ("Norm. EvolFrust", "@evol_frust{0.3f}")],
     name="hover_evol_frust"
 )
 
+# Add the hover tools to the plot
 p.add_tools(hover_bf, hover_ef, hover_af, hover_ev)
-p.xaxis.axis_label = "Residue Index"
-p.yaxis.axis_label = "Normalized Residue Flexibility / Frustration"
 
-# Add lines
+# Set axis labels
+p.xaxis.axis_label = "Residue Index (AlnIndex)"
+p.yaxis.axis_label = "Smoothed & Normalized Value"
+
+# Define colors and labels for the lines
 color_map = {
-    "b_factor":  ("B-Factor", Category10[10][0]),
-    "exp_frust": ("ExpFrust", Category10[10][1]),
-    "af_frust":  ("AFFrust", Category10[10][2]),
-    "evol_frust":("EvolFrust", Category10[10][3])
+    "b_factor":  ("B-Factor", Category10[10][0]), # Grey/Black often used for B-Factor
+    "exp_frust": ("ExpFrust", Category10[10][1]), # Blue
+    "af_frust":  ("AFFrust", Category10[10][2]),  # Green
+    "evol_frust":("EvolFrust", Category10[10][3]) # Purple
 }
-renderers = {}
+
+# Add line renderers to the plot and link hover tools
+renderers = {} # Dictionary to store the renderer objects
 for col_key, (label, col) in color_map.items():
     renderer = p.line(
-        x="x", y=col_key, source=source_plot,
-        line_width=2, alpha=0.7, color=col,
-        legend_label=label
+        x="x", y=col_key, source=source_plot, # Data source and columns
+        line_width=2, alpha=0.8, color=col,   # Styling
+        legend_label=label                   # Label for the legend
     )
-    renderers[col_key] = renderer
+    renderers[col_key] = renderer # Store the renderer
+
+    # Link the appropriate hover tool to this specific line renderer
     if col_key == "b_factor":
         hover_bf.renderers.append(renderer)
     elif col_key == "exp_frust":
@@ -298,1035 +408,928 @@ for col_key, (label, col) in color_map.items():
     elif col_key == "evol_frust":
         hover_ev.renderers.append(renderer)
 
+# Configure the legend
 p.legend.location = "top_left"
 p.legend.title = "Metrics"
-p.legend.click_policy = "hide"
+p.legend.click_policy = "hide" # Clicking legend item hides the line
 
-# (B) Scatter Plots (Experimental, AF, Evolutionary Frustration)
-# Scatter plots configuration with disabled wheel zoom by default
+# --- (B) Scatter Plots: B-Factor vs Frustration (Original, Normalized Data) ---
+# Create figures for the three scatter plots
+common_scatter_tools = ["pan", "box_zoom", "wheel_zoom", "reset", "save"]
 p_scatter_exp = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,
-    min_width=350,
-    min_height=350,
-    title="",
+    sizing_mode="stretch_both", # Adjusts to container size
+    aspect_ratio=1,             # Makes the plot square
+    min_width=300,              # Minimum dimensions
+    min_height=300,
+    title="",                   # Title set dynamically
     x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
+    y_axis_label="Normalized ExpFrust",
+    tools=common_scatter_tools,
     active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    active_scroll="wheel_zoom"
 )
 p_scatter_af = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,
-    min_width=350,
-    min_height=350,
-    title="",
-    x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
-    active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    sizing_mode="stretch_both", aspect_ratio=1, min_width=300, min_height=300,
+    title="", x_axis_label="Normalized B-Factor", y_axis_label="Normalized AFFrust",
+    tools=common_scatter_tools, active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 p_scatter_evol = figure(
-    sizing_mode="stretch_both",
-    aspect_ratio=1,
-    min_width=350,
-    min_height=350,
-    title="",
-    x_axis_label="Normalized B-Factor",
-    y_axis_label="Normalized Spearman Correlation Between Frustration and B-Factor",
-    tools=["pan", "box_zoom", "wheel_zoom", "reset","save"],
-    active_drag="box_zoom",
-    active_scroll=None  # Disable wheel zoom by default
+    sizing_mode="stretch_both", aspect_ratio=1, min_width=300, min_height=300,
+    title="", x_axis_label="Normalized B-Factor", y_axis_label="Normalized EvolFrust",
+    tools=common_scatter_tools, active_drag="box_zoom", active_scroll="wheel_zoom"
 )
 
-# ColumnDataSources will now include normalized data
-source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
-source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
-source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[]))
+# ColumnDataSources for scatter plots (hold normalized and original values)
+# 'x', 'y' are normalized for plotting; 'x_orig', 'y_orig' for potential tooltips
+source_scatter_exp = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[]))
+source_scatter_af = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[]))
+source_scatter_evol = ColumnDataSource(data=dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[]))
 
-# Create Div elements for regression info
-regression_info_exp = Div(
-    text="", 
-    styles={
-        'background-color': '#f8f9fa',
-        'padding': '10px',
-        'border': '1px solid #ddd',
-        'border-radius': '4px',
-        'margin-top': '10px',
-        'font-size': '14px',
-        'text-align': 'center',
-        'width': '100%'
-    },
-    sizing_mode="stretch_width"
-)
-regression_info_af = Div(
-    text="",
-    styles={
-        'background-color': '#f8f9fa',
-        'padding': '10px',
-        'border': '1px solid #ddd',
-        'border-radius': '4px',
-        'margin-top': '10px',
-        'font-size': '14px',
-        'text-align': 'center',
-        'width': '100%'
-    },
-    sizing_mode="stretch_width"
-)
-regression_info_evol = Div(
-    text="",
-    styles={
-        'background-color': '#f8f9fa',
-        'padding': '10px',
-        'border': '1px solid #ddd',
-        'border-radius': '4px',
-        'margin-top': '10px',
-        'font-size': '14px',
-        'text-align': 'center',
-        'width': '100%'
-    },
-    sizing_mode="stretch_width"
-)
+# Create Div elements to display regression line information below each scatter plot
+div_styles = { # Common styles for the info boxes
+    'background-color': '#f8f9fa', 'padding': '10px', 'border': '1px solid #ddd',
+    'border-radius': '4px', 'margin-top': '10px', 'font-size': '13px',
+    'text-align': 'center', 'width': 'auto', 'min-height': '40px' # Ensure space even if empty
+}
+regression_info_exp = Div(text="<i>Regression info appears here</i>", styles=div_styles, sizing_mode="stretch_width")
+regression_info_af = Div(text="<i>Regression info appears here</i>", styles=div_styles, sizing_mode="stretch_width")
+regression_info_evol = Div(text="<i>Regression info appears here</i>", styles=div_styles, sizing_mode="stretch_width")
 
-# Initial scatter glyphs (empty)
-p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=Category10[10][1], alpha=0.7)
-p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=Category10[10][2], alpha=0.7)
-p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=Category10[10][3], alpha=0.7)
+# Add scatter glyphs to the plots
+scatter_exp_renderer = p_scatter_exp.scatter("x", "y", source=source_scatter_exp, color=color_map["exp_frust"][1], alpha=0.6, size=6)
+scatter_af_renderer = p_scatter_af.scatter("x", "y", source=source_scatter_af,  color=color_map["af_frust"][1], alpha=0.6, size=6)
+scatter_evol_renderer = p_scatter_evol.scatter("x", "y", source=source_scatter_evol, color=color_map["evol_frust"][1], alpha=0.6, size=6)
+
+# Add HoverTools for the scatter points
+scatter_hover_tooltips = [
+    ("Index", "@index"),
+    ("Residue", "@residue"),
+    ("Orig. B-Factor", "@x_orig{0.3f}"),
+    ("Orig. Frust", "@y_orig{0.3f}"),
+    ("Norm. B-Factor", "@x{0.3f}"),
+    ("Norm. Frust", "@y{0.3f}"),
+]
+p_scatter_exp.add_tools(HoverTool(renderers=[scatter_exp_renderer], tooltips=scatter_hover_tooltips))
+p_scatter_af.add_tools(HoverTool(renderers=[scatter_af_renderer], tooltips=scatter_hover_tooltips))
+p_scatter_evol.add_tools(HoverTool(renderers=[scatter_evol_renderer], tooltips=scatter_hover_tooltips))
+
 
 def add_regression_line_and_info(fig, xvals, yvals, color="black", info_div=None, plot_type=""):
     """
-    Adds a linear regression line and updates the regression info Div.
-    The plot_type parameter helps in uniquely naming the regression renderers.
+    Calculates and adds a linear regression line to a scatter plot and updates
+    an associated Div element with the regression equation and R-squared value.
+
+    Args:
+        fig (bokeh.plotting.figure): The figure to add the line to.
+        xvals (np.array): X-values for regression (should be normalized).
+        yvals (np.array): Y-values for regression (should be normalized).
+        color (str): Color for the regression line.
+        info_div (bokeh.models.Div): The Div element to update with info.
+        plot_type (str): A unique identifier string (e.g., "exp", "af") to ensure
+                         renderer names are unique across plots.
     """
-    if len(xvals) < 2 or np.all(xvals == xvals[0]):
+    # Ensure there are enough valid data points for regression
+    not_nan_mask = ~np.isnan(xvals) & ~np.isnan(yvals)
+    xvals_clean = xvals[not_nan_mask]
+    yvals_clean = yvals[not_nan_mask]
+
+    # Check for sufficient data points and variance
+    if len(xvals_clean) < 2 or np.all(xvals_clean == xvals_clean[0]) or np.all(yvals_clean == yvals_clean[0]):
         if info_div:
-            info_div.text = "Insufficient data for regression"
-        return
+            info_div.text = "<i style='color: gray;'>Insufficient data or variance for regression</i>"
+        return # Exit if regression is not possible
 
-    not_nan = ~np.isnan(xvals) & ~np.isnan(yvals)
-    if not any(not_nan):
-        if info_div:
-            info_div.text = "No valid data points"
-        return
+    try:
+        # Perform linear regression using scipy.stats.linregress
+        slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
+    except ValueError as e:
+         if info_div:
+            info_div.text = f"<i style='color: red;'>Regression Error: {e}</i>"
+         return # Exit on error
 
-    xvals_clean = xvals[not_nan]
-    yvals_clean = yvals[not_nan]
-    if len(xvals_clean) < 2:
-        if info_div:
-            info_div.text = "Insufficient data for regression"
-        return
 
-    # Linear regression
-    slope, intercept, r_value, p_value, std_err = linregress(xvals_clean, yvals_clean)
-
-    # Plot regression line visibly
-    x_range = np.linspace(xvals_clean.min(), xvals_clean.max(), 100)
+    # --- Add Visible Regression Line ---
+    # Generate points for the line spanning the data range
+    x_min, x_max = np.min(xvals_clean), np.max(xvals_clean)
+    # Handle case where min == max after cleaning (should be caught earlier, but safety check)
+    if x_min == x_max:
+         if info_div:
+            info_div.text = "<i style='color: gray;'>Insufficient variance for regression line</i>"
+         return
+    x_range = np.linspace(x_min, x_max, 100) # 100 points for a smooth line
     y_range = slope * x_range + intercept
-    regression_line_name = f'regression_line_{plot_type}'
-    regression_line = fig.line(
-        x_range, y_range, 
-        line_width=2, line_dash='dashed', color=color, 
-        name=regression_line_name
+    regression_line_name = f'regression_line_{plot_type}' # Unique name
+
+    # Add the line glyph to the figure
+    regression_line_renderer = fig.line(
+        x_range, y_range,
+        line_width=2, line_dash='dashed', color=color,
+        name=regression_line_name # Assign the unique name
     )
 
-    # Create a separate data source for regression line hover
-    regression_source = ColumnDataSource(data=dict(
-        x=x_range,
-        y=y_range,
-        equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-    ))
-
-    # Plot regression line again with this data source, invisible (for hover)
-    invisible_regression_name = f'regression_hover_{plot_type}'
-    invisible_regression = fig.line(
-        'x', 'y', 
-        source=regression_source, 
-        line_width=10, 
-        alpha=0, 
-        name=invisible_regression_name  # Unique name
-    )
-
-    # Add a separate HoverTool for the regression line
+    # --- Add Hover Tool for the Regression Line ---
+    # Create the HoverTool targeting the *visible* regression line
     hover_regression = HoverTool(
-        renderers=[regression_line],
+        renderers=[regression_line_renderer], # Target the visible line
         tooltips=[
-            ("Regression Equation", "@equation")
+            ("Regression", f"y = {slope:.3f}x + {intercept:.3f}"), # Display equation
+            ("R-squared", f"{r_value**2:.3f}"), # Display R-squared
+            ("p-value", f"{p_value:.2e}") # Display p-value
         ],
-        mode='mouse'
+        mode='mouse', # Activate on mouse hover
+        name=f'regression_hover_tool_{plot_type}' # Unique name for the tool
     )
-    fig.add_tools(hover_regression)
+    # Check if a similar tool already exists before adding
+    existing_tool_names = [getattr(t, 'name', None) for t in fig.tools]
+    if hover_regression.name not in existing_tool_names:
+        fig.add_tools(hover_regression)
 
-    # Update regression info div with equation
+
+    # --- Update the Information Div ---
     if info_div:
+        # Format the output string with HTML for styling
         info_div.text = f"""
-        <div style='color: {color}'>
-            <strong>y = {slope:.3f}x + {intercept:.3f}</strong><br>
-            <span style='font-size: 12px'>R² = {r_value**2:.3f}</span>
+        <div style='color: {color};'>
+            <strong>Regression: y = {slope:.3f}x + {intercept:.3f}</strong><br>
+            <span style='font-size: 12px;'>R² = {r_value**2:.3f} | p = {p_value:.2e}</span>
         </div>
         """
 
-# Dropdown select
-file_options = sorted(data_by_file.keys())
-if DEFAULT_FILE and DEFAULT_FILE in file_options:
-    initial_file = DEFAULT_FILE
-elif file_options:
-    initial_file = file_options[0]
+# --- (C) Controls: File Selection Dropdown and Slider ---
+# Dropdown for selecting the PDB ID
+pdb_id_options = sorted(data_by_id.keys()) # Get list of loaded PDB IDs
+if not pdb_id_options:
+    print("WARNING: No data files found or loaded. The application might not work correctly.")
+    initial_pdb_id = ""
+elif DEFAULT_PDB_ID and DEFAULT_PDB_ID in pdb_id_options:
+    initial_pdb_id = DEFAULT_PDB_ID # Use hardcoded default if valid
+elif pdb_id_options:
+    initial_pdb_id = pdb_id_options[0] # Otherwise, use the first PDB ID found
 else:
-    initial_file = ""
+    initial_pdb_id = "" # Fallback
 
-select_file = Select(
-    title="Select Protein (summary_XXXX.txt):",
-    value=initial_file,
-    options=file_options
+select_pdb_id = Select(
+    title="Select PDB ID:", # Updated title
+    value=initial_pdb_id,
+    options=pdb_id_options, # Use PDB IDs as options
+    width=400 # Fixed width for the dropdown
 )
 
-# Add slider for moving average window size
+# Slider for controlling the moving average window size
 window_slider = Slider(
-    start=1, 
-    end=21, 
-    value=5, 
-    step=2, 
-    title="Moving Average Window Size",
-    width=400
+    start=1,       # Minimum window size (1 means no smoothing)
+    end=21,        # Maximum window size
+    value=5,       # Initial window size
+    step=2,        # Step size (ensures odd numbers for centered window)
+    title="Moving Average Window Size (for Line Plot)",
+    width=400      # Fixed width for the slider
 )
 
 def update_moving_average(attr, old, new):
-    """Update plot when slider value changes"""
-    update_plot(None, None, select_file.value)
+    """Callback function triggered when the slider value changes."""
+    # Simply re-call the main update function to recalculate and redraw plots
+    print(f"Slider changed: {old} -> {new}. Updating plot...") # Debug print
+    update_plot(None, None, None) # Pass None for attr, old, new as they are not needed directly
 
+# Attach the callback to the slider's 'value' property
 window_slider.on_change('value', update_moving_average)
 
 def min_max_normalize(arr):
     """
-    Applies min-max normalization to a numpy array.
-    Returns an array normalized to [0, 1]. Handles division by zero.
+    Applies min-max normalization to a numpy array (scales to [0, 1]).
+    Handles NaNs and cases where max equals min.
+
+    Args:
+        arr (np.array): Input array.
+
+    Returns:
+        np.array: Normalized array, or array of zeros if max == min.
     """
+    # Use nanmin/nanmax to ignore NaN values if present
     arr_min = np.nanmin(arr)
     arr_max = np.nanmax(arr)
+
+    # Check if min/max are NaN (happens if array is all NaN)
+    if np.isnan(arr_min) or np.isnan(arr_max):
+        return np.full_like(arr, np.nan) # Return array of NaNs
+
+    # Avoid division by zero if all valid values are the same
     if arr_max > arr_min:
         return (arr - arr_min) / (arr_max - arr_min)
     else:
-        return np.zeros_like(arr)  # If all values are the same, return zeros
+        # If max == min, return array of zeros (or 0.5, or handle as needed)
+        # Returning zeros assumes a baseline state when there's no variation.
+        out = np.zeros_like(arr)
+        # Preserve NaNs in the output
+        out[np.isnan(arr)] = np.nan
+        return out
+
 
 def update_plot(attr, old, new):
     """
-    Updates both the main plot and scatter plots when a new file is selected.
+    Core function to update all plots when the selected PDB ID or slider changes.
+
+    Reads data for the selected PDB ID, applies the current moving average window,
+    normalizes data, updates ColumnDataSources for line and scatter plots,
+    and recalculates/redraws regression lines.
+
+    Args:
+        attr (str): Name of the attribute that changed (e.g., 'value'). Not used directly.
+        old: Old value of the attribute. Not used directly.
+        new: New value of the attribute. Not used directly (reads current widget values).
     """
-    filename = select_file.value
-    if filename not in data_by_file:
+    pdb_id = select_pdb_id.value # Get current PDB ID from dropdown
+    window_size = window_slider.value # Get current window size from slider
+    print(f"Updating plots for PDB ID: {pdb_id} with window size: {window_size}") # Debug print
+
+    # --- Handle case where no PDB ID is selected or data is missing ---
+    if not pdb_id or pdb_id not in data_by_id:
+        print(f"No data for {pdb_id}, clearing plots.") # Debug print
+        # Clear main plot data
         source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-        p.title.text = "(No Data)"
+        # Clear scatter plot data
+        source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[])
+        source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[])
+        source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[], residue=[], index=[])
+        # Reset titles and regression info
+        p.title.text = "(No PDB ID Selected)"
         p_scatter_exp.title.text = ""
         p_scatter_af.title.text = ""
         p_scatter_evol.title.text = ""
-        regression_info_exp.text = ""
-        regression_info_af.text = ""
-        regression_info_evol.text = ""
-        return
+        regression_info_exp.text = "<i style='color: gray;'>No PDB ID selected</i>"
+        regression_info_af.text = "<i style='color: gray;'>No PDB ID selected</i>"
+        regression_info_evol.text = "<i style='color: gray;'>No PDB ID selected</i>"
+        # Remove any leftover regression lines
+        remove_regression_renderers(p_scatter_exp)
+        remove_regression_renderers(p_scatter_af)
+        remove_regression_renderers(p_scatter_evol)
+        return # Stop execution for this update
 
-    # Get window size from slider
-    window_size = window_slider.value
+    # --- Process Data for the Selected PDB ID ---
+    # Get the original DataFrame for the selected PDB ID
+    df_orig = data_by_id[pdb_id]["df_original"]
+    df_plot = df_orig.copy() # Create a copy to modify for the line plot
 
-    # Update main line plot with new window size
-    df_orig = data_by_file[filename]["df_original"]
-    df_plot = df_orig.copy()
+    # Columns to smooth and normalize for the line plot
+    metrics_to_process = ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]
 
-    # Apply moving average with current window size
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        df_plot[col] = moving_average(arr, window_size=window_size)
+    # 1. Apply Moving Average (using current slider value)
+    for col in metrics_to_process:
+        # Ensure column exists and is numeric before applying moving average
+        if col in df_plot.columns and pd.api.types.is_numeric_dtype(df_plot[col]):
+            arr = df_plot[col].values
+            df_plot[col] = moving_average(arr, window_size=window_size)
+        else:
+            print(f"Warning: Column '{col}' not found or not numeric in {pdb_id}. Skipping smoothing.")
+            df_plot[col] = np.nan # Fill with NaN if problematic
 
-    # Normalize the smoothed data
-    for col in ["B_Factor", "ExpFrust", "AFFrust", "EvolFrust"]:
-        arr = df_plot[col].values
-        valid_mask = ~np.isnan(arr)
-        if not np.any(valid_mask):
-            continue
-        col_min = np.nanmin(arr)
-        col_max = np.nanmax(arr)
-        if col_max > col_min:
-            df_plot[col] = (arr - col_min) / (col_max - col_min)
+    # 2. Normalize the *smoothed* data for the line plot
+    for col in metrics_to_process:
+         if col in df_plot.columns:
+             df_plot[col] = min_max_normalize(df_plot[col].values)
+         else:
+             # This case should ideally not happen if handled above, but as a fallback:
+             df_plot[col] = np.nan
 
-    sub_plot = df_plot.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
-    if sub_plot.empty:
-        source_plot.data = dict(x=[], residue=[], b_factor=[], exp_frust=[], af_frust=[], evol_frust=[])
-        p.title.text = f"{filename} (No valid rows)."
-    else:
-        new_data = dict(
-            x=sub_plot["AlnIndex"].tolist(),
-            residue=sub_plot["Residue"].tolist(),
-            b_factor=sub_plot["B_Factor"].tolist(),
-            exp_frust=sub_plot["ExpFrust"].tolist(),
-            af_frust=sub_plot["AFFrust"].tolist(),
-            evol_frust=sub_plot["EvolFrust"].tolist()
-        )
-        source_plot.data = new_data
-        p.title.text = f"{filename} (Smoothed + Normalized)"
 
-    # Update scatter plots (using NON-smoothed data)
-    df_orig = data_by_file[filename]["df_original"]
-    sub_orig = df_orig.dropna(subset=["B_Factor","ExpFrust","AFFrust","EvolFrust"])
+    # --- Update Main Line Plot ---
+    # Prepare data dictionary for ColumnDataSource, handling potential NaNs from processing
+    # Using df_plot which now contains smoothed and normalized data
+    plot_data_dict = {
+        "x": df_plot["AlnIndex"].tolist(),
+        "residue": df_plot["Residue"].tolist(),
+        "b_factor": df_plot["B_Factor"].tolist(),
+        "exp_frust": df_plot["ExpFrust"].tolist(),
+        "af_frust": df_plot["AFFrust"].tolist(),
+        "evol_frust": df_plot["EvolFrust"].tolist()
+    }
+    source_plot.data = plot_data_dict # Update the data source, triggers plot redraw
+    p.title.text = f"PDB ID: {pdb_id} (Smoothed Window={window_size}, Normalized)" # Update plot title with PDB ID
 
-    # **Remove all existing regression renderers**
+    # --- Update Scatter Plots (using ORIGINAL, non-smoothed data, but normalized) ---
+    # Get the original data again
+    df_scatter_base = data_by_id[pdb_id]["df_original"].copy()
+
+    # Normalize the original data for scatter plots
+    scatter_x_norm = min_max_normalize(df_scatter_base["B_Factor"].values)
+    scatter_y_exp_norm = min_max_normalize(df_scatter_base["ExpFrust"].values)
+    scatter_y_af_norm = min_max_normalize(df_scatter_base["AFFrust"].values)
+    scatter_y_evol_norm = min_max_normalize(df_scatter_base["EvolFrust"].values)
+
+    # Prepare common data for tooltips
+    scatter_residues = df_scatter_base["Residue"].tolist()
+    scatter_indices = df_scatter_base["AlnIndex"].tolist()
+    scatter_x_orig = df_scatter_base["B_Factor"].tolist() # Keep original for tooltip
+
+
+    # **Remove existing regression renderers before adding new ones**
     remove_regression_renderers(p_scatter_exp)
     remove_regression_renderers(p_scatter_af)
     remove_regression_renderers(p_scatter_evol)
 
-    # Reset data sources
-    source_scatter_exp.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_af.data = dict(x=[], y=[], x_orig=[], y_orig=[])
-    source_scatter_evol.data = dict(x=[], y=[], x_orig=[], y_orig=[])
+    # Update ExpFrust Scatter Plot
+    source_scatter_exp.data = dict(
+        x=scatter_x_norm, y=scatter_y_exp_norm,
+        x_orig=scatter_x_orig, y_orig=df_scatter_base["ExpFrust"].tolist(), # Orig for tooltip
+        residue=scatter_residues, index=scatter_indices
+    )
+    p_scatter_exp.title.text = f"{pdb_id}: B-Factor vs ExpFrust" # Use PDB ID in title
+    add_regression_line_and_info(
+        fig=p_scatter_exp,
+        xvals=scatter_x_norm, # Use normalized data for regression
+        yvals=scatter_y_exp_norm,
+        color=color_map["exp_frust"][1], # Use consistent color
+        info_div=regression_info_exp,
+        plot_type="exp" # Unique identifier
+    )
 
-    regression_info_exp.text = ""
-    regression_info_af.text = ""
-    regression_info_evol.text = ""
+    # Update AFFrust Scatter Plot
+    source_scatter_af.data = dict(
+        x=scatter_x_norm, y=scatter_y_af_norm,
+        x_orig=scatter_x_orig, y_orig=df_scatter_base["AFFrust"].tolist(),
+        residue=scatter_residues, index=scatter_indices
+    )
+    p_scatter_af.title.text = f"{pdb_id}: B-Factor vs AFFrust" # Use PDB ID in title
+    add_regression_line_and_info(
+        fig=p_scatter_af,
+        xvals=scatter_x_norm,
+        yvals=scatter_y_af_norm,
+        color=color_map["af_frust"][1],
+        info_div=regression_info_af,
+        plot_type="af"
+    )
 
-    if sub_orig.empty:
-        p_scatter_exp.title.text = f"{filename} (No Data)"
-        p_scatter_af.title.text = f"{filename} (No Data)"
-        p_scatter_evol.title.text = f"{filename} (No Data)"
-    else:
-        # ExpFrust
-        x_exp_orig = sub_orig["B_Factor"].values
-        y_exp_orig = sub_orig["ExpFrust"].values
-        x_exp_norm = min_max_normalize(x_exp_orig)
-        y_exp_norm = min_max_normalize(y_exp_orig)
-        source_scatter_exp.data = dict(x=x_exp_norm, y=y_exp_norm, x_orig=x_exp_orig, y_orig=y_exp_orig)
-        p_scatter_exp.title.text = f"{filename} Experimental Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_exp, 
-            xvals=x_exp_norm,  # Use normalized data
-            yvals=y_exp_norm, 
-            color=Category10[10][1], 
-            info_div=regression_info_exp,
-            plot_type="exp"
-        )
+    # Update EvolFrust Scatter Plot
+    source_scatter_evol.data = dict(
+        x=scatter_x_norm, y=scatter_y_evol_norm,
+        x_orig=scatter_x_orig, y_orig=df_scatter_base["EvolFrust"].tolist(),
+        residue=scatter_residues, index=scatter_indices
+    )
+    p_scatter_evol.title.text = f"{pdb_id}: B-Factor vs EvolFrust" # Use PDB ID in title
+    add_regression_line_and_info(
+        fig=p_scatter_evol,
+        xvals=scatter_x_norm,
+        yvals=scatter_y_evol_norm,
+        color=color_map["evol_frust"][1],
+        info_div=regression_info_evol,
+        plot_type="evol"
+    )
 
-        # AFFrust
-        x_af_orig = sub_orig["B_Factor"].values
-        y_af_orig = sub_orig["AFFrust"].values
-        x_af_norm = min_max_normalize(x_af_orig)
-        y_af_norm = min_max_normalize(y_af_orig)
-        source_scatter_af.data = dict(x=x_af_norm, y=y_af_norm, x_orig=x_af_orig, y_orig=y_af_orig)
-        p_scatter_af.title.text = f"{filename} AF Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_af, 
-            xvals=x_af_norm, 
-            yvals=y_af_norm, 
-            color=Category10[10][2], 
-            info_div=regression_info_af,
-            plot_type="af"
-        )
+# Attach the update_plot callback to the PDB ID selection dropdown
+select_pdb_id.on_change("value", update_plot)
 
-        # EvolFrust
-        x_evol_orig = sub_orig["B_Factor"].values
-        y_evol_orig = sub_orig["EvolFrust"].values
-        x_evol_norm = min_max_normalize(x_evol_orig)
-        y_evol_norm = min_max_normalize(y_evol_orig)
-        source_scatter_evol.data = dict(x=x_evol_norm, y=y_evol_norm, x_orig=x_evol_orig, y_orig=y_evol_orig)
-        p_scatter_evol.title.text = f"{filename} Evolutionary Frustration"
-        add_regression_line_and_info(
-            fig=p_scatter_evol, 
-            xvals=x_evol_norm, 
-            yvals=y_evol_norm, 
-            color=Category10[10][3], 
-            info_div=regression_info_evol,
-            plot_type="evol"
-        )
-
-select_file.on_change("value", update_plot)
-if initial_file:
-    update_plot(None, None, initial_file)
+# Trigger the initial plot update when the script starts, if a PDB ID is selected
+if initial_pdb_id:
+    print(f"Initial plot load for PDB ID: {initial_pdb_id}")
+    update_plot(None, None, initial_pdb_id)
+else:
+    print("No initial PDB ID selected, plots will be empty until selection.")
 
 
 ###############################################################################
 # 5) CORRELATION TABLE AND FILTERS
 ###############################################################################
 
-# (D) CORRELATION TABLE
+# --- (D) Correlation Data Table ---
+# Define table columns with formatters for numbers
+# Updated title for the first column to "PDB ID"
+columns = [
+    TableColumn(field="PDB_ID", title="PDB ID"), # Use PDB_ID field and title
+    TableColumn(field="MetricA", title="Metric A"),
+    TableColumn(field="MetricB", title="Metric B"),
+    TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.000")), # 3 decimal places
+    TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.00e+0")) # Scientific notation
+]
+
+# Create ColumnDataSource for the table
 if df_all_corr.empty:
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Rho"),
-        TableColumn(field="Pval", title="p-value")
-    ]
-    source_corr = ColumnDataSource(dict(Test=[], MetricA=[], MetricB=[], Rho=[], Pval=[]))
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
+    # If no correlation data was loaded, create an empty source
+    print("WARNING: Correlation DataFrame is empty. Table will be empty.")
+    source_corr = ColumnDataSource(dict(PDB_ID=[], MetricA=[], MetricB=[], Rho=[], Pval=[])) # Use PDB_ID
 else:
+    # Otherwise, use the populated DataFrame
     source_corr = ColumnDataSource(df_all_corr)
-    columns = [
-        TableColumn(field="Test", title="Test"),
-        TableColumn(field="MetricA", title="MetricA"),
-        TableColumn(field="MetricB", title="MetricB"),
-        TableColumn(field="Rho", title="Spearman Rho", formatter=NumberFormatter(format="0.3f")),
-        TableColumn(field="Pval", title="p-value", formatter=NumberFormatter(format="0.2e"))
-    ]
-    data_table = DataTable(columns=columns, source=source_corr, height=400, width=1200)
 
-# (E) FILTERS for correlation table
+# Create the DataTable widget
+data_table = DataTable(
+    columns=columns,
+    source=source_corr,
+    height=400, # Fixed height
+    # width=1200, # Let sizing_mode handle width
+    sizing_mode='stretch_width', # Allow width to adjust
+    selectable=True, # Allow row selection
+    editable=False,  # Data is not editable in the table
+    index_position=None # Hide the default index column
+)
 
-# Define helper function to split labels into columns
+# --- (E) Filters for Correlation Table ---
+
+# Helper function to distribute labels into columns for CheckboxGroups
 def split_labels(labels, num_columns):
-    """
-    Splits a list of labels into a list of lists, each sublist containing labels for one column.
-    """
-    if num_columns <= 0:
-        return [labels]
-    k, m = divmod(len(labels), num_columns)
+    """Splits a list of labels into N sublists for columnar layout."""
+    if num_columns <= 0 or not labels:
+        return [labels] # Return single list if invalid columns or no labels
+    k, m = divmod(len(labels), num_columns) # Calculate items per column
+    # Create sublists, distributing remainder 'm'
     return [labels[i*k + min(i, m):(i+1)*k + min(i+1, m)] for i in range(num_columns)]
 
-# Define the number of columns for better layout
-NUM_COLUMNS = 3
+# Number of columns for filter checkboxes (adjust for layout)
+NUM_FILTER_COLUMNS = 4
 
-tests_in_corr = sorted(df_all_corr["Test"].unique()) if not df_all_corr.empty else []
+# Get unique values for filters from the correlation DataFrame
 if not df_all_corr.empty:
-    combo_options = sorted({
-        f"{row['MetricA']} vs {row['MetricB']}" 
+    # Use PDB_ID column for test filters
+    tests_in_corr = sorted(df_all_corr["PDB_ID"].unique()) # Get unique PDB IDs
+    # Create unique combo strings like "MetricA vs MetricB" for filtering
+    combo_options = sorted(list(set(
+        f"{row['MetricA']} vs {row['MetricB']}"
         for _, row in df_all_corr.iterrows()
-    })
+    )))
 else:
+    # Handle case where no correlation data exists
+    tests_in_corr = []
     combo_options = []
 
-if not df_all_corr.empty:
-    # Split labels into columns
-    test_labels_split = split_labels(tests_in_corr, NUM_COLUMNS)
-    combo_labels_split = split_labels(combo_options, NUM_COLUMNS)
-    
-    # Create CheckboxGroups for Tests
+# Create CheckboxGroups for PDB IDs
+if tests_in_corr:
+    test_labels_split = split_labels(tests_in_corr, NUM_FILTER_COLUMNS)
     checkbox_tests_columns = [
         CheckboxGroup(
             labels=col_labels,
             active=[],  # Initially no selection
-            name=f'tests_column_{i+1}'
-        ) for i, col_labels in enumerate(test_labels_split)
+            name=f'tests_column_{i+1}', # Unique name for each group
+            height=150 # Limit height to encourage scrolling if needed
+        ) for i, col_labels in enumerate(test_labels_split) if col_labels # Only create if labels exist
     ]
-    
-    # Create CheckboxGroups for Metric Pairs
+else:
+    checkbox_tests_columns = [CheckboxGroup(labels=["(No PDB IDs Found)"], active=[], disabled=True)]
+
+# Create CheckboxGroups for Metric Pairs
+if combo_options:
+    combo_labels_split = split_labels(combo_options, NUM_FILTER_COLUMNS)
     checkbox_combos_columns = [
         CheckboxGroup(
             labels=col_labels,
-            active=[],  # Initially no selection
-            name=f'combos_column_{i+1}'
-        ) for i, col_labels in enumerate(combo_labels_split)
+            active=[],
+            name=f'combos_column_{i+1}',
+            height=150
+        ) for i, col_labels in enumerate(combo_labels_split) if col_labels
     ]
 else:
-    checkbox_tests_columns = [CheckboxGroup(labels=[], active=[], name='tests_column_1')]
-    checkbox_combos_columns = [CheckboxGroup(labels=[], active=[], name='combos_column_1')]
+     checkbox_combos_columns = [CheckboxGroup(labels=["(No Metric Pairs Found)"], active=[], disabled=True)]
 
-# Create Columns for Tests and Metric Pairs
-tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width', width=300)
-combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width', width=300)
+# Layout for the filter controls using rows of CheckboxGroups
+tests_layout = row(*checkbox_tests_columns, sizing_mode='stretch_width')
+combos_layout = row(*checkbox_combos_columns, sizing_mode='stretch_width')
 
-# Add Titles Above Each CheckboxGroup
-tests_title = Div(text="<b>Select Tests:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
-combos_title = Div(text="<b>Select Metric Pairs:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
+# Titles for the filter sections
+tests_title = Div(text="<b>Filter by PDB ID:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'}) # Updated title
+combos_title = Div(text="<b>Filter by Metric Pair:</b>", styles={'font-size': '14px', 'margin-bottom': '5px'})
 
-# Combine Titles and CheckboxGroups into Columns
-tests_column = column(tests_title, tests_layout, sizing_mode='stretch_width')
-combos_column = column(combos_title, combos_layout, sizing_mode='stretch_width')
+# Combine titles and checkbox groups into columns for vertical arrangement
+tests_filter_section = column(tests_title, tests_layout, sizing_mode='stretch_width')
+combos_filter_section = column(combos_title, combos_layout, sizing_mode='stretch_width')
 
-# Arrange Tests and Combos Side by Side with Spacer
+# Arrange the two filter sections side-by-side
 controls_layout = row(
-    tests_column,
-    Spacer(width=50),
-    combos_column,
+    tests_filter_section,
+    Spacer(width=30), # Add space between filter sections
+    combos_filter_section,
     sizing_mode='stretch_width'
 )
 
-# Define helper function to get selected labels from multiple CheckboxGroups
+# Helper function to get all selected labels from a list of CheckboxGroups
 def get_selected_labels(checkbox_columns):
-    """
-    Aggregates selected labels from multiple CheckboxGroup widgets.
-    """
+    """Aggregates active labels from a list of CheckboxGroup widgets."""
     selected = []
-    for checkbox in checkbox_columns:
-        selected.extend([checkbox.labels[i] for i in checkbox.active])
+    for checkbox_group in checkbox_columns:
+        # Map active indices back to labels
+        selected.extend([checkbox_group.labels[i] for i in checkbox_group.active])
     return selected
 
 def update_corr_filter(attr, old, new):
-    """Filter correlation table based on selected tests and metric pairs."""
+    """Callback to filter the correlation table based on checkbox selections."""
     if df_all_corr.empty:
-        return
-    
-    # Aggregate selected tests and metric pairs from all CheckboxGroups
-    selected_tests = get_selected_labels(checkbox_tests_columns)
+        return # Do nothing if there's no data
+
+    # Get currently selected items from all relevant checkbox groups
+    selected_tests = get_selected_labels(checkbox_tests_columns) # These are PDB IDs now
     selected_combos = get_selected_labels(checkbox_combos_columns)
 
-    if not selected_tests and not selected_combos:
-        filtered = df_all_corr
-    else:
-        df_tmp = df_all_corr.copy()
-        df_tmp["combo_str"] = df_tmp.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+    # Start with the full dataset
+    filtered_df = df_all_corr.copy()
 
-        if selected_tests and selected_combos:
-            filtered = df_tmp[
-                (df_tmp["Test"].isin(selected_tests)) &
-                (df_tmp["combo_str"].isin(selected_combos))
-            ].drop(columns=["combo_str"])
-        elif selected_tests:
-            filtered = df_tmp[df_tmp["Test"].isin(selected_tests)].drop(columns=["combo_str"])
-        elif selected_combos:
-            filtered = df_tmp[df_tmp["combo_str"].isin(selected_combos)].drop(columns=["combo_str"])
-        else:
-            filtered = df_all_corr
+    # Apply PDB ID filter if any are selected
+    if selected_tests:
+        filtered_df = filtered_df[filtered_df["PDB_ID"].isin(selected_tests)] # Filter by PDB_ID column
 
-    source_corr.data = filtered.to_dict(orient="list")
+    # Apply combo filter if any combos are selected
+    if selected_combos:
+        # Recreate the "MetricA vs MetricB" string for filtering
+        filtered_df["combo_str"] = filtered_df.apply(lambda r: f"{r['MetricA']} vs {r['MetricB']}", axis=1)
+        filtered_df = filtered_df[filtered_df["combo_str"].isin(selected_combos)]
+        # Drop the temporary column
+        if "combo_str" in filtered_df.columns:
+            filtered_df = filtered_df.drop(columns=["combo_str"])
 
-# Attach callbacks to all CheckboxGroups
-for checkbox in checkbox_tests_columns + checkbox_combos_columns:
-    checkbox.on_change('active', update_corr_filter)
+    # Update the table's data source
+    source_corr.data = filtered_df.to_dict(orient="list")
+    print(f"Table filtered. Showing {len(filtered_df)} rows.") # Debug print
+
+# Attach the callback function to the 'active' property of each CheckboxGroup
+for checkbox_col in checkbox_tests_columns:
+    checkbox_col.on_change('active', update_corr_filter)
+for checkbox_col in checkbox_combos_columns:
+    checkbox_col.on_change('active', update_corr_filter)
 
 ###############################################################################
 # 6) Additional Aggregated Plots (Converted from Plotly to Bokeh)
 ###############################################################################
+# These plots show relationships across all loaded proteins.
 
-# (F) Spearman Rho vs Average B-Factor
-source_avg_plot = ColumnDataSource(data_long_avg)
+# --- (F) Spearman Rho vs Average B-Factor ---
+source_avg_plot = ColumnDataSource(data_long_avg) # Use the melted data
 
 p_avg_plot = figure(
-    title="Spearman Correlation vs Average B-Factor",
-    x_axis_label="Average B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    title="Overall: Spearman Correlation vs. Average B-Factor",
+    x_axis_label="Average B-Factor (per PDB ID)", # Updated label
+    y_axis_label="Spearman Rho (B-Factor vs. Frustration)",
     sizing_mode='stretch_width',
-    height=400,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None
+    height=450,
+    tools="pan,wheel_zoom,box_zoom,reset,save,hover", # Add hover tool directly
+    tooltips=[ # Define tooltips for scatter points - use PDB_ID
+        ("PDB ID", "@PDB_ID"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Avg B-Factor", "@Avg_B_Factor{0.3f}"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    active_drag="box_zoom"
 )
 
-# Define color palette for Frustration Types
+# Get unique frustration types and assign colors using the predefined map
 frust_types_avg = data_long_avg['Frust_Type'].unique().tolist()
-palette_avg = Category10[max(3, len(frust_types_avg))]  # Ensure enough colors
-color_map_frust_avg = {frust: palette_avg[i] for i, frust in enumerate(frust_types_avg)}
+# FRUSTRATION_COLORS defined earlier in section 3
 
-# Create a list to hold scatter renderers
+# Add scatter glyphs, one for each frustration type for legend grouping
 scatter_renderers_avg = []
-
-# Add scatter glyphs with named renderers and collect renderers
 for frust in frust_types_avg:
     subset = data_long_avg[data_long_avg['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
+    color = FRUSTRATION_COLORS.get(frust, 'gray') # Use predefined color, default to gray
     scatter = p_avg_plot.scatter(
         'Avg_B_Factor', 'Spearman_Rho',
         source=source_subset,
-        color=color_map_frust_avg[frust],
-        size=8,
-        alpha=0.6,
+        color=color,
+        size=8, alpha=0.7,
         legend_label=frust,
-        muted_alpha=0.1,
-        name=f'scatter_{frust}'  # Add name to the renderer
+        muted_alpha=0.1, # Appearance when muted via legend click
+        name=f'scatter_avg_{frust}' # Unique name
     )
     scatter_renderers_avg.append(scatter)
 
-    # Add regression lines with hover
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Avg_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Avg_B_Factor'].min(), subset['Avg_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-
-        regression_line = p_avg_plot.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust_avg[frust], 
-            line_dash='dashed',
-            name=f'regression_line_{frust}'  # Unique name based on frust type
-        )
-
-        # Add HoverTool only to the regression_line
-        hover_regression = HoverTool(
-            renderers=[regression_line],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_avg_plot.add_tools(hover_regression)
-
-# Create and add the standard HoverTool only for the scatter renderers
-hover_scatter_avg = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=scatter_renderers_avg,  # Only attach to scatter renderers
-    mode='mouse'
-)
-p_avg_plot.add_tools(hover_scatter_avg)
-
 p_avg_plot.legend.location = "top_left"
 p_avg_plot.legend.title = "Frustration Type"
-p_avg_plot.legend.click_policy = "mute"
+p_avg_plot.legend.click_policy = "mute" # Mute series on legend click
 
-# (G) Spearman Rho vs Std Dev of B-Factor
-source_std_plot = ColumnDataSource(data_long_std)
+# --- (G) Spearman Rho vs Std Dev of B-Factor ---
+source_std_plot = ColumnDataSource(data_long_std) # Use the other melted data
 
 p_std_plot = figure(
-    title="Spearman Correlation vs Std Dev of B-Factor",
-    x_axis_label="Standard Deviation of B-Factor",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
+    title="Overall: Spearman Correlation vs. Std Dev of B-Factor",
+    x_axis_label="Standard Deviation of B-Factor (per PDB ID)", # Updated label
+    y_axis_label="Spearman Rho (B-Factor vs. Frustration)",
     sizing_mode='stretch_width',
-    height=400,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None
+    height=450,
+    tools="pan,wheel_zoom,box_zoom,reset,save,hover",
+    tooltips=[ # Use PDB_ID in tooltip
+        ("PDB ID", "@PDB_ID"),
+        ("Frustration Type", "@Frust_Type"),
+        ("Std Dev B-Factor", "@Std_B_Factor{0.3f}"),
+        ("Spearman Rho", "@Spearman_Rho{0.3f}")
+    ],
+    active_drag="box_zoom"
 )
 
-# Define color palette for Frustration Types
 frust_types_std = data_long_std['Frust_Type'].unique().tolist()
-palette_std = Category10[max(3, len(frust_types_std))]  # Ensure enough colors
-color_map_frust_std = {frust: palette_std[i] for i, frust in enumerate(frust_types_std)}
+# FRUSTRATION_COLORS defined earlier
 
-# Create a list to hold scatter renderers
 scatter_renderers_std = []
-
-# Add scatter glyphs with named renderers and collect renderers
 for frust in frust_types_std:
     subset = data_long_std[data_long_std['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
+    color = FRUSTRATION_COLORS.get(frust, 'gray')
     scatter = p_std_plot.scatter(
         'Std_B_Factor', 'Spearman_Rho',
         source=source_subset,
-        color=color_map_frust_std[frust],
-        size=8,
-        alpha=0.6,
+        color=color,
+        size=8, alpha=0.7,
         legend_label=frust,
         muted_alpha=0.1,
-        name=f'scatter_{frust}'  # Add name to the renderer
+        name=f'scatter_std_{frust}'
     )
     scatter_renderers_std.append(scatter)
-
-    # Add regression lines with hover
-    if len(subset) >= 2:
-        slope, intercept, r_value, p_value, std_err = linregress(subset['Std_B_Factor'], subset['Spearman_Rho'])
-        x_range = np.linspace(subset['Std_B_Factor'].min(), subset['Std_B_Factor'].max(), 100)
-        y_range = slope * x_range + intercept
-
-        regression_source = ColumnDataSource(data=dict(
-            x=x_range,
-            y=y_range,
-            equation=[f"y = {slope:.3f}x + {intercept:.3f}"] * len(x_range)
-        ))
-
-        regression_line = p_std_plot.line(
-            'x', 'y', 
-            source=regression_source, 
-            color=color_map_frust_std[frust], 
-            line_dash='dashed',
-            name=f'regression_line_{frust}'  # Unique name based on frust type
-        )
-
-        # Add HoverTool only to the regression_line
-        hover_regression = HoverTool(
-            renderers=[regression_line],
-            tooltips=[
-                ("Regression Equation", "@equation")
-            ],
-            mode='mouse'
-        )
-        p_std_plot.add_tools(hover_regression)
-
-# Create and add the standard HoverTool only for the scatter renderers
-hover_scatter_std = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
-        ("Frustration Type", "@Frust_Type"),
-        ("Spearman Rho", "@Spearman_Rho{0.3f}")
-    ],
-    renderers=scatter_renderers_std,  # Only attach to scatter renderers
-    mode='mouse'
-)
-p_std_plot.add_tools(hover_scatter_std)
 
 p_std_plot.legend.location = "top_left"
 p_std_plot.legend.title = "Frustration Type"
 p_std_plot.legend.click_policy = "mute"
 
-# (H) Spearman Rho per Protein and Frustration Metric
-# Melt data_proviz for the third plot
+
+# --- (H) Spearman Rho per PDB ID and Frustration Metric (Dot Plot) ---
+# Melt data_proviz again, this time keeping PDB_ID as ID
 data_long_corr = data_proviz.melt(
-    id_vars=['Protein'],
+    id_vars=['PDB_ID'], # Use PDB_ID
     value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
     var_name='Frust_Type',
     value_name='Spearman_Rho'
 )
-
-# Clean Frust_Type names
+# Clean names and drop NaNs
 data_long_corr['Frust_Type'] = data_long_corr['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-
-# Remove rows with NaN correlations
 data_long_corr.dropna(subset=['Spearman_Rho'], inplace=True)
 
-source_corr_plot = ColumnDataSource(data_long_corr)
+# Get PDB IDs for x-axis range (categorical)
+pdb_id_x_range = sorted(data_proviz['PDB_ID'].unique().tolist()) # Use PDB_ID
 
 p_corr_plot = figure(
-    title="Spearman Correlation per Protein and Frustration Metric",
-    x_axis_label="Protein",
-    y_axis_label="Spearman Correlation Between Frustration and B-Factor",
-    x_range=data_proviz['Protein'].tolist(),
+    title="Spearman Correlation (B-Factor vs. Frustration) per PDB ID", # Updated title
+    x_axis_label="PDB ID", # Updated label
+    y_axis_label="Spearman Rho",
+    x_range=pdb_id_x_range, # Use list of PDB IDs for categorical axis
     sizing_mode='stretch_width',
-    height=600,
-    tools="pan,wheel_zoom,box_zoom,reset,save",
-    active_drag="box_zoom",
-    active_scroll=None,
-    toolbar_location="above"
-)
-
-# Define color palette for Frustration Types
-frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
-palette_corr = Category10[max(3, len(frust_types_corr))]  # Ensure enough colors
-color_map_corr = {frust: palette_corr[i] for i, frust in enumerate(frust_types_corr)}
-
-# Add HoverTool
-hover_corr = HoverTool(
-    tooltips=[
-        ("Protein", "@Protein"),
+    height=500,
+    tools="pan,wheel_zoom,box_zoom,reset,save,hover",
+    tooltips=[ # Tooltips for the dots - use PDB_ID
+        ("PDB ID", "@PDB_ID"),
         ("Frustration Metric", "@Frust_Type"),
         ("Spearman Rho", "@Spearman_Rho{0.3f}")
     ],
-    mode='mouse'
-)
-p_corr_plot.add_tools(hover_corr)
-
-# Add horizontal line at y=0
-p_corr_plot.line(
-    x=[-0.5, len(data_proviz['Protein']) - 0.5], 
-    y=[0, 0], 
-    line_width=1, 
-    line_dash='dashed', 
-    color='gray', 
-    name='y_zero_line'
+    toolbar_location="above"
 )
 
-# Add scatter glyphs
-for frust in frust_types_corr:
+# Use the same color map
+frust_types_corr = data_long_corr['Frust_Type'].unique().tolist()
+
+# Add jittered scatter points for each frustration type
+dot_renderers = []
+for i, frust in enumerate(frust_types_corr):
     subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
     source_subset = ColumnDataSource(subset)
-    p_corr_plot.scatter(
-        'Protein', 'Spearman_Rho',
+    color = FRUSTRATION_COLORS.get(frust, 'gray')
+    # Apply jitter to x-axis to prevent overlap within each PDB ID category
+    dot = p_corr_plot.scatter(
+        x=jitter('PDB_ID', width=0.6, range=p_corr_plot.x_range), # Jitter x-position based on PDB_ID
+        y='Spearman_Rho',
         source=source_subset,
-        color=color_map_corr[frust],
-        size=8,
-        alpha=0.6,
+        color=color,
+        size=9, alpha=0.7,
         legend_label=frust,
-        muted_alpha=0.1
+        muted_alpha=0.1,
+        name=f'dot_{frust}'
     )
+    dot_renderers.append(dot)
 
-# Add mean lines for each frustration type
-for frust in frust_types_corr:
-    subset = data_long_corr[data_long_corr['Frust_Type'] == frust]
-    mean_value = subset['Spearman_Rho'].mean()
+# Add horizontal line at y=0 for reference
+p_corr_plot.line(x=pdb_id_x_range, y=0, line_width=1, line_dash='dashed', color='gray')
 
-    # Create source for the mean line with hover information
-    mean_source = ColumnDataSource(data=dict(
-        x=[-0.5, len(data_proviz['Protein']) - 0.5],
-        y=[mean_value, mean_value],
-        mean_value=[f"{mean_value:.3f}"] * 2,
-        frust_type=[frust] * 2
-    ))
+# Add mean lines (optional)
+# mean_line_renderers = []
+# for frust in frust_types_corr:
+#     mean_value = data_long_corr[data_long_corr['Frust_Type'] == frust]['Spearman_Rho'].mean()
+#     if not np.isnan(mean_value):
+#         color = FRUSTRATION_COLORS.get(frust, 'gray')
+#         mean_line = p_corr_plot.line(
+#             x=pdb_id_x_range, y=mean_value,
+#             color=color, line_dash='dotted', line_width=2,
+#             name=f'mean_line_{frust}'
+#         )
+#         mean_line_renderers.append(mean_line)
 
-    # Add mean line with hover
-    mean_line = p_corr_plot.line(
-        'x', 'y',
-        source=mean_source,
-        color=color_map_corr[frust],
-        line_dash='dashed',
-        name=f'mean_line_{frust}'  # Unique name based on frust type
-    )
-
-    # Add hover tool for mean line
-    mean_hover = HoverTool(
-        renderers=[mean_line],
-        tooltips=[
-            ("Frustration Type", "@frust_type"),
-            ("Mean Correlation", "@mean_value")
-        ],
-        mode='mouse'
-    )
-    p_corr_plot.add_tools(mean_hover)
-
+# Configure legend and axis
 p_corr_plot.legend.location = "top_left"
 p_corr_plot.legend.title = "Frustration Type"
 p_corr_plot.legend.click_policy = "mute"
+p_corr_plot.xaxis.major_label_orientation = pi / 3 # Rotate labels more if many PDB IDs
 
-# Rotate x-axis labels to prevent overlapping
-from math import pi
-p_corr_plot.xaxis.major_label_orientation = pi / 4  # 45 degrees
+# --- (I) Bar Plot: Mean Spearman Rho per Metric with Std Dev Error Bars ---
+def create_bar_plot_with_sd(data_proviz):
+    """Creates a bar chart of mean correlations with std dev whiskers."""
+    if data_proviz.empty:
+        print("WARNING: data_proviz is empty, cannot create bar plot.")
+        p_bar = figure(title="Mean Spearman Correlation (No Data)", height=300)
+        p_bar.text(x=0, y=0, text="No data available for this plot.")
+        return p_bar
+
+    spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
+    stats_corrs = data_proviz[spearman_columns].agg(['mean', 'std']).transpose().reset_index()
+    stats_corrs.rename(columns={
+        'index': 'Metric', 'mean': 'Mean_Spearman_Rho', 'std': 'Std_Spearman_Rho'
+    }, inplace=True)
+    stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
+    stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
+    stats_corrs['Color'].fillna('gray', inplace=True)
+    stats_corrs['upper'] = stats_corrs['Mean_Spearman_Rho'] + stats_corrs['Std_Spearman_Rho']
+    stats_corrs['lower'] = stats_corrs['Mean_Spearman_Rho'] - stats_corrs['Std_Spearman_Rho']
+    source_bar = ColumnDataSource(stats_corrs)
+
+    min_val = stats_corrs['lower'].min()
+    max_val = stats_corrs['upper'].max()
+    if np.isnan(min_val) or np.isnan(max_val):
+        y_range_with_padding = None
+    else:
+        padding = (max_val - min_val) * 0.1 if (max_val - min_val) > 0 else 0.5
+        y_range_with_padding = Range1d(start=min_val - padding, end=max_val + padding)
+
+    p_bar = figure(
+        title="Mean Spearman Correlation (B-Factor vs. Frustration) with Std Dev",
+        x_axis_label="Frustration Metric", y_axis_label="Mean Spearman Rho",
+        x_range=stats_corrs['Metric'].tolist(), y_range=y_range_with_padding,
+        height=400, sizing_mode='stretch_width',
+        tools="pan,wheel_zoom,box_zoom,reset,save", toolbar_location="above"
+    )
+    vbar_renderer = p_bar.vbar(
+        x='Metric', top='Mean_Spearman_Rho', width=0.6, source=source_bar,
+        color='Color', legend_field='Metric', line_color="black"
+    )
+    whisker = Whisker(
+        base='Metric', upper='upper', lower='lower', source=source_bar,
+        level="overlay", line_color='black'
+    )
+    p_bar.add_layout(whisker)
+    hover_bar = HoverTool(
+        tooltips=[("Metric", "@Metric"), ("Mean Rho", "@Mean_Spearman_Rho{0.3f}"), ("Std Dev", "@Std_Spearman_Rho{0.3f}")],
+        renderers=[vbar_renderer], mode='mouse'
+    )
+    p_bar.add_tools(hover_bar)
+    p_bar.line(x=stats_corrs['Metric'].tolist(), y=0, line_width=1, line_dash='dashed', color='gray')
+    p_bar.legend.location = "top_right"
+    p_bar.legend.title = "Frustration Type"
+    p_bar.xgrid.grid_line_color = None
+    p_bar.xaxis.major_label_orientation = 0 # No rotation needed for few categories
+
+    return p_bar
+
+# Create the bar plot instance
+bar_plot = create_bar_plot_with_sd(data_proviz)
+
+# --- Layout for Additional Plots Section ---
+additional_plots_column = column(
+    Div(text="<h2>Overall Protein Comparisons</h2>", styles={'margin-top': '20px'}),
+    p_avg_plot,
+    p_std_plot,
+    p_corr_plot,
+    bar_plot, # Add the bar plot
+    sizing_mode='stretch_width',
+    spacing=30, # Add vertical space between plots
+    name="additional_plots"
+)
+
 
 ###############################################################################
-# 7) User Interface Components
+# 7) User Interface Components and Layout
 ###############################################################################
 
-# Add header and description
+# --- Header and Introductory Text ---
 header = Div(text="""
-    <h1>Evolutionary Frustration</h1>
+    <h1>Evolutionary Frustration Analysis Dashboard</h1>
     <p>
-        Evolutionary frustration leverages multiple sequence alignment (MSA) derived coupling scores 
-        and statistical potentials to calculate the mutational frustration of various proteins without the need for protein structures. 
-        By benchmarking the evolutionary frustration metric against experimental data (B-Factor) and two structure-based metrics, 
-        we aim to validate sequence-derived evolutionary constraints in representing protein flexibility.
+        This dashboard visualizes protein flexibility (measured by B-Factor) and compares it
+        with three 'frustration' metrics calculated using different methods. Frustration
+        indicates regions of a protein structure with energetically unfavorable interactions.
+        Select a PDB ID from the dropdown to view its specific data.
     </p>
     <ul>
-        <li><strong>Experimental Frustration</strong>: Derived via the Frustratometer using a crystal structure.</li>
-        <li><strong>AF Frustration</strong>: Derived via the Frustratometer using an AlphaFold structure.</li>
-        <li><strong>Evolutionary Frustration</strong>: Derived directly from sequence alignment (no structure needed).</li>
+        <li><strong>B-Factor:</strong> Experimental measure of atomic displacement/flexibility from crystal structures.</li>
+        <li><strong>Experimental Frustration (ExpFrust):</strong> Calculated using the <a href='http://frustratometer.qb.fcen.uba.ar/' target='_blank'>Frustratometer</a> web server with an experimental protein structure (e.g., PDB).</li>
+        <li><strong>AF Frustration (AFFrust):</strong> Calculated using the Frustratometer with a structure predicted by AlphaFold.</li>
+        <li><strong>Evolutionary Frustration (EvolFrust):</strong> Calculated based on evolutionary sequence conservation patterns (Multiple Sequence Alignment - MSA) and statistical potentials, <em>without requiring a 3D structure</em>.</li>
     </ul>
-    <p>
-        The correlation table below shows Spearman correlation coefficients and p-values for <em>non-smoothed</em> data. 
-        The curves in the main plot are <em>smoothed</em> with a simple moving average and 
-        <strong>min–max normalized</strong> (per protein). Normalization does not affect Spearman correlations but be mindful 
-        that min–max scaling is not suitable for comparing magnitudes <em>across</em> proteins.
+     <p>
+        <strong>Goal:</strong> To assess how well sequence-derived Evolutionary Frustration correlates with experimental flexibility (B-Factor) and structure-based frustration metrics.
     </p>
-    <h3>Contributors</h3>
-    <p>
-        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>, 
-        George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
-        <sup>1</sup>Department of Physics, Rice University<br>
-        <sup>2</sup>Department of Chemistry, Rice University<br>
-        <sup>3</sup>Department of Biosciences, Rice University<br>
-        <sup>4</sup>Center for Theoretical Biological Physics, Rice University
-    </p>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
+    <hr>
+    """, sizing_mode='stretch_width', styles={'margin-bottom': '15px'})
 
-# Unity Container
-description_visualizer = Div(text="""
-    <h2>Protein Visualizer Instructions</h2>
+plot_description = Div(text="""
+    <h2>Interactive Protein Analysis</h2>
     <p>
-        The protein visualizer allows you to interact with the protein structure using various controls and visual metrics:
+        Use the dropdown menu below to select a PDB ID. The plots will update automatically.
     </p>
     <ul>
-        <li><strong>Oscillation (O):</strong> Ribbon oscillates with amplitude/frequency mapped to average B-factor.</li>
-        <li><strong>Color (ExpFrust):</strong> Ribbon color indicates experimental frustration.</li>
-        <li><strong>Luminosity (EvolFrust):</strong> Indicates evolutionary frustration.</li>
-        <li><strong>Fragmentation (B):</strong> Splits the protein into fragments for 3D frustration plotting.</li>
-        <li><strong>Navigation:</strong> <code>W/A/S/D</code>, <code>Shift</code>, <code>Space</code> to move the camera, <code>C</code> to zoom, etc.</li>
-        <li><strong>Folding (Q/E):</strong> Unfold/fold the protein. <code>O</code> toggles oscillation or sets height by B-factor in the unfolded state.</li>
-        <li><strong>Pause (P):</strong> Pauses the scene so you can select another protein.</li>
+        <li><strong>Main Line Plot:</strong> Shows B-Factor and frustration metrics along the protein sequence for the selected PDB ID. Data is <em>smoothed</em> using a moving average (adjust window size with the slider) and <em>min-max normalized</em> to [0, 1] for visual comparison within the selected protein. Hover over lines for details.</li>
+        <li><strong>Scatter Plots:</strong> Show the relationship between normalized B-Factor and each normalized frustration metric for the selected PDB ID (using <em>original, non-smoothed</em> data points before normalization). Regression lines and R² values are shown. Hover over points for residue details and original values.</li>
+        <li><strong>Correlation Table:</strong> Displays pre-calculated Spearman rank correlations (Rho) and p-values between pairs of metrics for <em>all</em> loaded PDB IDs (using <em>original, non-smoothed, non-normalized</em> data). Use the checkboxes below the table to filter the results by PDB ID and metric pair.</li>
+        <li><strong>Overall Comparison Plots:</strong> Show aggregated views across all loaded PDB IDs, comparing correlations with average/standard deviation of B-Factors, and mean correlations per metric type.</li>
     </ul>
-""", sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
+    <p><i><strong>Note:</strong> Min-max normalization is applied per PDB ID for visualization and does not affect Spearman correlations. Be cautious when comparing absolute normalized values across different proteins.</i></p>
+    """, sizing_mode='stretch_width', styles={'margin-bottom': '20px'})
+
+
+# --- Unity Visualizer Section (Optional, kept from original) ---
+unity_description = Div(text="""
+    <h2>3D Protein Visualizer (External Unity App)</h2>
+    <p>
+        The embedded view below links to an external Unity application for 3D visualization
+        (developed separately). It may offer interactive features related to the data.
+        <i>(Note: Functionality depends on the external application at the provided URL).</i>
+    </p>
+""", sizing_mode='stretch_width', styles={'margin-bottom': '10px'})
 
 unity_iframe = Div(
     text="""
     <div style="width: 100%; display: flex; justify-content: center; align-items: center; margin: 20px 0;">
-        <iframe 
+        <iframe
             src="https://igotintogradschool2025.site/unity/"
-            style="width: 95vw; height: 90vh; border: 2px solid #ddd; border-radius: 8px; 
-                   box-shadow: 0 4px 6px rgba(0,0,0,0.1);"
+            style="width: 95%; max-width: 1000px; height: 70vh; min-height: 500px; border: 1px solid #ccc; border-radius: 8px;
+                   box-shadow: 0 2px 5px rgba(0,0,0,0.1);"
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-            allowfullscreen>
+            allowfullscreen
+            title="External Unity Protein Visualizer">
+            Your browser does not support iframes. You can access the visualizer directly at
+            <a href='https://igotintogradschool2025.site/unity/' target='_blank'>https://igotintogradschool2025.site/unity/</a>.
         </iframe>
     </div>
     """,
     sizing_mode='stretch_width',
-    styles={'margin-top': '20px'}
+    styles={'margin-top': '15px'}
 )
-unity_iframe.visible = True
-
 unity_container = column(
-    description_visualizer,
+    unity_description,
     unity_iframe,
     sizing_mode='stretch_width'
 )
 
-# Controls section
-controls_section = Div(text="<b>Filter Correlation Table</b>", styles={'font-size': '16px', 'margin': '10px 0'})
+# --- Footer / Credits ---
+footer = Div(text="""
+    <hr style='margin-top: 30px;'>
+    <h3>Contributors</h3>
+    <p style='font-size: 11pt;'>
+        <strong>Adam Kuhn<sup>1,2,3,4</sup>, Vinícius Contessoto<sup>4</sup>,
+        George N Phillips Jr.<sup>2,3</sup>, José Onuchic<sup>1,2,3,4</sup></strong><br>
+        <small>
+            <sup>1</sup>Department of Physics, Rice University |
+            <sup>2</sup>Department of Chemistry, Rice University |
+            <sup>3</sup>Department of Biosciences, Rice University |
+            <sup>4</sup>Center for Theoretical Biological Physics, Rice University
+        </small>
+    </p>
+    """, sizing_mode='stretch_width', styles={'margin-top': '20px'})
 
-# Arrange CheckboxGroup widgets in the controls_layout already defined above
-# Removed the old MultiSelect widgets and replaced with CheckboxGroups arranged in columns
 
-# Custom styles
-custom_styles = Div(text="""
-    <style>
-        .visualization-section {
-            margin: 20px 0;
-            width: 100%;
-        }
-        .controls-row {
-            margin: 10px 0;
-            gap: 10px;
-        }
-        .bk-root {
-            width: 100% !important;
-        }
-    </style>
-""")
+# --- Layout Assembly ---
 
-# (G) NEW: Bar Plot with Mean, SD, and without T-Test Results
-def create_bar_plot_with_sd(data_proviz):
-    """
-    Creates a bar chart displaying the mean Spearman correlation for each frustration metric,
-    with error bars representing the standard deviation.
-    Adjusts the y-axis range to ensure whiskers are fully visible.
-    """
-    # Compute mean and standard deviation of Spearman Rho per metric
-    spearman_columns = ['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust']
-    stats_corrs = data_proviz[spearman_columns].agg(['mean', 'std']).transpose().reset_index()
-    stats_corrs.rename(columns={
-        'index': 'Metric',
-        'mean': 'Mean_Spearman_Rho',
-        'std': 'Std_Spearman_Rho'
-    }, inplace=True)
+# Arrange the individual scatter plots and their info divs vertically
+scatter_col_exp = column(p_scatter_exp, regression_info_exp, sizing_mode="stretch_width", styles={'min-width': '300px'})
+scatter_col_af = column(p_scatter_af, regression_info_af, sizing_mode="stretch_width", styles={'min-width': '300px'})
+scatter_col_evol = column(p_scatter_evol, regression_info_evol, sizing_mode="stretch_width", styles={'min-width': '300px'})
 
-    # Clean Metric names
-    stats_corrs['Metric'] = stats_corrs['Metric'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-
-    # Assign colors based on Metric using the predefined FRUSTRATION_COLORS dictionary
-    stats_corrs['Color'] = stats_corrs['Metric'].map(FRUSTRATION_COLORS)
-
-    # Create ColumnDataSource for the bar plot
-    source_bar = ColumnDataSource(stats_corrs)
-
-    # Create figure
-    p_bar = figure(
-        title="Mean Spearman Correlation between B-Factor and Frustration Metrics",
-        x_axis_label="Frustration Metric",
-        y_axis_label="Mean Spearman Rho",
-        x_range=stats_corrs['Metric'].tolist(),
-        sizing_mode='stretch_width',
-        height=400,
-        tools="pan,wheel_zoom,box_zoom,reset,save",
-        toolbar_location="above"
-    )
-
-    # Add vertical bars and capture the renderer
-    vbar_renderer = p_bar.vbar(
-        x='Metric',
-        top='Mean_Spearman_Rho',
-        width=0.6,
-        source=source_bar,
-        color='Color',  # Reference the 'Color' column in the data source
-        legend_label="Frustration Metric",
-        line_color="black"
-    )
-
-    # Add error bars using Whisker
-    whisker = Whisker(
-        base='Metric',
-        upper='upper',
-        lower='lower',
-        source=source_bar,
-        level="overlay"
-    )
-    p_bar.add_layout(whisker)
-
-    # Calculate upper and lower bounds for error bars
-    source_bar.data['upper'] = source_bar.data['Mean_Spearman_Rho'] + source_bar.data['Std_Spearman_Rho']
-    source_bar.data['lower'] = source_bar.data['Mean_Spearman_Rho'] - source_bar.data['Std_Spearman_Rho']
-
-    # **New Addition**: Adjust y-axis range to include padding
-    # Determine the minimum and maximum values for the y-axis
-    min_lower = source_bar.data['lower'].min()
-    max_upper = source_bar.data['upper'].max()
-
-    # Calculate padding (10% of the range)
-    y_padding = (max_upper - min_lower) * 0.1 if (max_upper - min_lower) != 0 else 1
-
-    # Set the y_range with padding
-    p_bar.y_range = Range1d(start=min_lower - y_padding, end=max_upper + y_padding)
-
-    # Add horizontal line at y=0 for reference
-    p_bar.line(x=[-0.5, len(stats_corrs) - 0.5], y=[0, 0], line_width=1, line_dash='dashed', color='gray')
-
-    # Customize hover tool and correctly reference the vbar renderer
-    hover_bar = HoverTool(
-        tooltips=[
-            ("Metric", "@Metric"),
-            ("Mean Spearman Rho", "@Mean_Spearman_Rho{0.3f}"),
-            ("Std Dev", "@Std_Spearman_Rho{0.3f}")
-        ],
-        renderers=[vbar_renderer],  # Correctly pass the renderer
-        mode='mouse'
-    )
-    p_bar.add_tools(hover_bar)
-
-    # Remove legend as it's redundant with colors
-    p_bar.legend.visible = False
-
-    return p_bar
-
-# (F) Layout for Additional Plots
-additional_plots = column(
-    p_avg_plot,
-    p_std_plot,
-    p_corr_plot,
-    create_bar_plot_with_sd(data_proviz),  # Integrated Bar Plot without T-Tests
-    sizing_mode='stretch_width',
-    spacing=20,
-    name="additional_plots"
-)
-
-# (G) Scatter Plots Layout
-scatter_col_exp = column(
-    p_scatter_exp, 
-    regression_info_exp, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_af = column(
-    p_scatter_af, 
-    regression_info_af, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-scatter_col_evol = column(
-    p_scatter_evol, 
-    regression_info_evol, 
-    sizing_mode="stretch_width",
-    styles={'flex': '1 1 350px', 'min-width': '350px'}
-)
-
-# Update scatter plots row with flex layout and minimum widths
+# Arrange the scatter plot columns horizontally in a row
 scatter_row = row(
     scatter_col_exp,
     scatter_col_af,
     scatter_col_evol,
     sizing_mode="stretch_width",
-    styles={
-        'display': 'flex', 
-        'justify-content': 'space-between', 
-        'gap': '20px',
-        'width': '100%',
-        'margin': '0 auto',
-        'flex-wrap': 'wrap'
+    styles={ # Basic flexbox for responsiveness
+        'display': 'flex', 'flex-wrap': 'wrap', 'gap': '20px',
+        'justify-content': 'space-around', 'margin-top': '20px'
     }
 )
 
-# (I) Main layout with slider and additional plots
+# Main visualization section (controls, line plot, scatter plots)
 visualization_section = column(
-    select_file,
-    window_slider,
-    p,
-    scatter_row,
-    unity_container,
-    additional_plots,  # Integrated Additional Plots
+    # Use select_pdb_id instead of select_file
+    row(select_pdb_id, window_slider, styles={'gap': '20px'}), # Controls side-by-side
+    p, # Main line plot
+    scatter_row, # Row of scatter plots
     sizing_mode='stretch_width',
-    css_classes=['visualization-section']
+    name="visualization_section"
 )
 
-# Main layout assembly
+# Correlation table section (filters and table)
+correlation_section = column(
+    Div(text="<h2>Correlation Analysis Across All PDB IDs</h2>", styles={'margin-top': '30px'}), # Updated title
+    controls_layout, # Checkbox filters
+    Spacer(height=15),
+    data_table, # The correlation table itself
+    sizing_mode='stretch_width',
+    name="correlation_section"
+)
+
+
+# Assemble the final layout
 main_layout = column(
-    custom_styles,
     header,
+    plot_description,
     visualization_section,
-    controls_section,
-    controls_layout,  # Updated controls layout with CheckboxGroups
-    data_table,
-    sizing_mode='stretch_width'
+    unity_container, # Include the Unity section
+    additional_plots_column, # Include the aggregated plots
+    correlation_section, # Include the correlation table and filters
+    footer,
+    sizing_mode='stretch_width' # Make the overall layout stretch to width
 )
 
-# Set up document
+# Add the final layout to the current document
 curdoc().add_root(main_layout)
-curdoc().title = "Evolutionary Frustration"
+# Set the title of the browser tab
+curdoc().title = "Evolutionary Frustration Dashboard"
+
+print("Bokeh application layout created and added to document.")
+# End of script
