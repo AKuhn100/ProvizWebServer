@@ -129,105 +129,196 @@ def remove_regression_renderers(fig):
     fig.renderers = new_renderers
 
 ###############################################################################
-# 3) Load and Aggregate Data from Local Directory
+# 3) Load and Aggregate Data from Local Directory (keyed by 4-letter PDB ID)
 ###############################################################################
-data_by_file = {}
+data_by_file  = {}   # { pdb_id: { df_original, df_for_plot, corrs } }
+filename_map  = {}   # { pdb_id: filename }
 all_corr_rows = []
 
 # Aggregation lists
-protein_names = []
-avg_bfactors = []
-std_bfactors = []
-spearman_exp = []
-spearman_af = []
-spearman_evol = []
+protein_names  = []
+avg_bfactors   = []
+std_bfactors   = []
+spearman_exp   = []
+spearman_af    = []
+spearman_evol  = []
 
-# Possible frustration columns
-POSSIBLE_FRUST_COLUMNS = ['ExpFrust', 'AFFrust', 'EvolFrust']
-
-# Color mapping for plots
-FRUSTRATION_COLORS = {
-    "ExpFrust.": Category10[10][0],  # Red
-    "AFFrust.": Category10[10][1],   # Blue
-    "EvolFrust.": Category10[10][2]  # Green
-}
-
-# Iterate through files
 for filename in os.listdir(DATA_DIR):
-    if not re.match(FILE_PATTERN, filename):
+    m = re.match(r"^summary_([A-Za-z0-9]{4})\.txt$", filename)
+    if not m:
         print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
         continue
 
+    pdb_id   = m.group(1)
     file_path = os.path.join(DATA_DIR, filename)
     df_orig, df_plot, corrs = parse_summary_file(file_path)
     if df_orig is None:
         continue
 
-    data_by_file[filename] = {
+    # store by PDB ID
+    filename_map[pdb_id] = filename
+    data_by_file[pdb_id]   = {
         "df_original": df_orig,
         "df_for_plot": df_plot,
-        "corrs": corrs
+        "corrs":       corrs
     }
 
-    # Collect correlation data
-    for combo, (rho, pval) in corrs.items():
-        mA, mB = combo
-        all_corr_rows.append([filename, mA, mB, rho, pval])
+    # collect correlations
+    for (mA, mB), (rho, pval) in corrs.items():
+        all_corr_rows.append([pdb_id, mA, mB, rho, pval])
 
-    # Aggregate data for additional plots
-    avg_b = df_orig['B_Factor'].mean()
-    std_b = df_orig['B_Factor'].std()
+    # aggregate stats
+    protein_names.append(pdb_id)
+    avg_bfactors.append(df_orig['B_Factor'].mean())
+    std_bfactors.append(df_orig['B_Factor'].std())
+    spearman_exp.append(corrs.get(("B_Factor","ExpFrust"),  (np.nan, np.nan))[0])
+    spearman_af.append( corrs.get(("B_Factor","AFFrust"),  (np.nan, np.nan))[0])
+    spearman_evol.append(corrs.get(("B_Factor","EvolFrust"),(np.nan, np.nan))[0])
 
-    spearman_r_exp = corrs.get(("B_Factor", "ExpFrust"), (np.nan, np.nan))[0]
-    spearman_r_af = corrs.get(("B_Factor", "AFFrust"), (np.nan, np.nan))[0]
-    spearman_r_evol = corrs.get(("B_Factor", "EvolFrust"), (np.nan, np.nan))[0]
-
-    protein_names.append(filename)
-    avg_bfactors.append(avg_b)
-    std_bfactors.append(std_b)
-    spearman_exp.append(spearman_r_exp)
-    spearman_af.append(spearman_r_af)
-    spearman_evol.append(spearman_r_evol)
-
-# Correlation DataFrame
+# build DataFrames exactly as before
 df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
-
-# Aggregated DataFrame for Additional Plots
 data_proviz = pd.DataFrame({
-    'Protein': protein_names,
-    'Avg_B_Factor': avg_bfactors,
-    'Std_B_Factor': std_bfactors,
-    'Spearman_ExpFrust': spearman_exp,
-    'Spearman_AFFrust': spearman_af,
+    'Protein':            protein_names,
+    'Avg_B_Factor':       avg_bfactors,
+    'Std_B_Factor':       std_bfactors,
+    'Spearman_ExpFrust':  spearman_exp,
+    'Spearman_AFFrust':   spearman_af,
     'Spearman_EvolFrust': spearman_evol
 })
 
-# Melt data for plotting
+# Melt for additional plots
 data_long_avg = data_proviz.melt(
-    id_vars=['Protein', 'Avg_B_Factor'],
-    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
-    var_name='Frust_Type',
-    value_name='Spearman_Rho'
+    id_vars=['Protein','Avg_B_Factor'],
+    value_vars=['Spearman_ExpFrust','Spearman_AFFrust','Spearman_EvolFrust'],
+    var_name='Frust_Type', value_name='Spearman_Rho'
 )
-
 data_long_std = data_proviz.melt(
-    id_vars=['Protein', 'Std_B_Factor'],
-    value_vars=['Spearman_ExpFrust', 'Spearman_AFFrust', 'Spearman_EvolFrust'],
-    var_name='Frust_Type',
-    value_name='Spearman_Rho'
+    id_vars=['Protein','Std_B_Factor'],
+    value_vars=['Spearman_ExpFrust','Spearman_AFFrust','Spearman_EvolFrust'],
+    var_name='Frust_Type', value_name='Spearman_Rho'
 )
 
-# Clean Frust_Type names
-data_long_avg['Frust_Type'] = data_long_avg['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-data_long_std['Frust_Type'] = data_long_std['Frust_Type'].str.replace('Spearman_', '').str.replace('Frust', 'Frust.')
-
-# Remove rows with NaN correlations
-data_long_avg.dropna(subset=['Spearman_Rho'], inplace=True)
-data_long_std.dropna(subset=['Spearman_Rho'], inplace=True)
+# Clean up names and drop NaNs
+for df in (data_long_avg, data_long_std):
+    df['Frust_Type'] = (
+        df['Frust_Type']
+          .str.replace('Spearman_','')
+          .str.replace('Frust','Frust.')
+    )
+    df.dropna(subset=['Spearman_Rho'], inplace=True)
 
 ###############################################################################
-# 4) Bokeh Application Components
+# 4) Select widget showing only PDB IDs
 ###############################################################################
+file_options = sorted(data_by_file.keys())  # e.g. ['1G7T','2XYZ',…]
+if DEFAULT_FILE in file_options:
+    initial_pdb = DEFAULT_FILE
+elif file_options:
+    initial_pdb = file_options[0]
+else:
+    initial_pdb = ""
+
+select_file = Select(
+    title="Select Protein (PDB ID):",
+    value=initial_pdb,
+    options=file_options
+)
+select_file.on_change("value", update_plot)###############################################################################
+# 3) Load and Aggregate Data from Local Directory (keyed by 4-letter PDB ID)
+###############################################################################
+data_by_file  = {}   # { pdb_id: { df_original, df_for_plot, corrs } }
+filename_map  = {}   # { pdb_id: filename }
+all_corr_rows = []
+
+# Aggregation lists
+protein_names  = []
+avg_bfactors   = []
+std_bfactors   = []
+spearman_exp   = []
+spearman_af    = []
+spearman_evol  = []
+
+for filename in os.listdir(DATA_DIR):
+    m = re.match(r"^summary_([A-Za-z0-9]{4})\.txt$", filename)
+    if not m:
+        print(f"Skipping {filename}: does not match pattern {FILE_PATTERN}")
+        continue
+
+    pdb_id   = m.group(1)
+    file_path = os.path.join(DATA_DIR, filename)
+    df_orig, df_plot, corrs = parse_summary_file(file_path)
+    if df_orig is None:
+        continue
+
+    # store by PDB ID
+    filename_map[pdb_id] = filename
+    data_by_file[pdb_id]   = {
+        "df_original": df_orig,
+        "df_for_plot": df_plot,
+        "corrs":       corrs
+    }
+
+    # collect correlations
+    for (mA, mB), (rho, pval) in corrs.items():
+        all_corr_rows.append([pdb_id, mA, mB, rho, pval])
+
+    # aggregate stats
+    protein_names.append(pdb_id)
+    avg_bfactors.append(df_orig['B_Factor'].mean())
+    std_bfactors.append(df_orig['B_Factor'].std())
+    spearman_exp.append(corrs.get(("B_Factor","ExpFrust"),  (np.nan, np.nan))[0])
+    spearman_af.append( corrs.get(("B_Factor","AFFrust"),  (np.nan, np.nan))[0])
+    spearman_evol.append(corrs.get(("B_Factor","EvolFrust"),(np.nan, np.nan))[0])
+
+# build DataFrames exactly as before
+df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
+data_proviz = pd.DataFrame({
+    'Protein':            protein_names,
+    'Avg_B_Factor':       avg_bfactors,
+    'Std_B_Factor':       std_bfactors,
+    'Spearman_ExpFrust':  spearman_exp,
+    'Spearman_AFFrust':   spearman_af,
+    'Spearman_EvolFrust': spearman_evol
+})
+
+# Melt for additional plots
+data_long_avg = data_proviz.melt(
+    id_vars=['Protein','Avg_B_Factor'],
+    value_vars=['Spearman_ExpFrust','Spearman_AFFrust','Spearman_EvolFrust'],
+    var_name='Frust_Type', value_name='Spearman_Rho'
+)
+data_long_std = data_proviz.melt(
+    id_vars=['Protein','Std_B_Factor'],
+    value_vars=['Spearman_ExpFrust','Spearman_AFFrust','Spearman_EvolFrust'],
+    var_name='Frust_Type', value_name='Spearman_Rho'
+)
+
+# Clean up names and drop NaNs
+for df in (data_long_avg, data_long_std):
+    df['Frust_Type'] = (
+        df['Frust_Type']
+          .str.replace('Spearman_','')
+          .str.replace('Frust','Frust.')
+    )
+    df.dropna(subset=['Spearman_Rho'], inplace=True)
+
+###############################################################################
+# 4) Select widget showing only PDB IDs
+###############################################################################
+file_options = sorted(data_by_file.keys())  # e.g. ['1G7T','2XYZ',…]
+if DEFAULT_FILE in file_options:
+    initial_pdb = DEFAULT_FILE
+elif file_options:
+    initial_pdb = file_options[0]
+else:
+    initial_pdb = ""
+
+select_file = Select(
+    title="Select Protein (PDB ID):",
+    value=initial_pdb,
+    options=file_options
+)
+select_file.on_change("value", update_plot)
 
 # (A) Main Plot: Smoothed + Normalized Data
 source_plot = ColumnDataSource(data=dict(
