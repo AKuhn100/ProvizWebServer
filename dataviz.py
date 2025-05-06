@@ -4,6 +4,7 @@ Bokeh application for visualizing protein flexibility (B-Factor) and various
 frustration metrics (Experimental, AlphaFold-based, Evolutionary).
 
 Uses PDB IDs for selection. Specific aggregated plots removed.
+Scroll-to-zoom on main line plot is off by default.
 
 Color Scheme: B-Factor (Yellow), ExpFrust (Red), AFFrust (Blue), EvolFrust (Green).
 """
@@ -143,9 +144,9 @@ def remove_regression_renderers(fig):
         is_regression_tool = isinstance(tool_name, str) and tool_name.startswith('regression_')
         targets_removed_renderer = False
         if isinstance(tool, HoverTool) and tool.renderers:
-            for r in tool.renderers:
-                 renderer_name = getattr(r, 'name', None)
-                 if renderer_name in renderers_to_remove_names:
+            for r_tool in tool.renderers: # Renamed r to r_tool to avoid conflict
+                 renderer_name_tool = getattr(r_tool, 'name', None) # Renamed renderer_name
+                 if renderer_name_tool in renderers_to_remove_names:
                      targets_removed_renderer = True
                      break
         if targets_removed_renderer or is_regression_tool:
@@ -229,7 +230,8 @@ p = figure(
     title="(No PDB ID Selected)", # Updated default title
     sizing_mode='stretch_width', height=600,
     tools=["pan","box_zoom","wheel_zoom","reset","save"],
-    active_drag="box_zoom", active_scroll="wheel_zoom"
+    active_drag="box_zoom",
+    active_scroll=None # Changed from "wheel_zoom" to None
 )
 
 # Define HoverTools
