@@ -12,17 +12,16 @@ from bokeh.plotting import figure
 from bokeh.layouts import column, row
 from scipy.stats import spearmanr
 
-###############################################################################
-# 1) Configuration
-###############################################################################
+# ─── 1) Configuration ──────────────────────────────────────────────────────────
+
 # Local data directory path
 DATA_DIR = "summary_data"  # Directory containing the summary files
 
-# We'll look for files matching the pattern: summary_testNNN.txt
-FILE_PATTERN = r"^summary_test(\d{3})\.txt$"
+# Files are named "summary_XXXX.txt" where XXXX is a 4-char alphanumeric PDB ID
+FILE_PATTERN = r"^summary_([A-Za-z0-9]{4})\.txt$"
 
-# (Optional) Specify a default test to visualize on startup
-DEFAULT_TEST = "test001"  # Change this to your preferred default test
+# (Optional) Specify a default PDB ID to visualize on startup (must be 4 chars)
+DEFAULT_TEST = "1QI0"
 
 ###############################################################################
 # 2) Helpers: Data Parsing
@@ -91,45 +90,55 @@ def parse_summary_file(local_path):
             corrs[(mA, mB)] = (rho, pval)
     return df_original, df_for_plot, corrs
 
-###############################################################################
-# 3) Load data from local directory
-###############################################################################
+# ─── 2) Load data from local directory ────────────────────────────────────────
+
 data_by_test = {}
 all_corr_rows = []
 
-# List all files in the data directory
 for filename in os.listdir(DATA_DIR):
-    # Check if it matches summary_testNNN.txt
     match = re.match(FILE_PATTERN, filename)
     if not match:
-        continue  # skip unrelated files
+        continue
 
-    # Extract test### from the file name
-    test_number = match.group(1)  # e.g. "001"
-    test_name = "test" + test_number  # e.g. "test001"
+    # Extract the 4-char PDB ID (uppercase)
+    pdb_id = match.group(1).upper()
 
-    # Get the full path to the file
     file_path = os.path.join(DATA_DIR, filename)
-
-    # Parse the data
     df_orig, df_plot, corrs = parse_summary_file(file_path)
-
     if df_orig is None:
         continue
 
-    data_by_test[test_name] = {
+    data_by_test[pdb_id] = {
         "df_original": df_orig,
-        "df_plot": df_plot,
-        "corrs": corrs
+        "df_plot":    df_plot,
+        "corrs":      corrs
     }
 
-    # Accumulate correlation info for a master table
-    for combo, (rho, pval) in corrs.items():
-        mA, mB = combo
-        all_corr_rows.append([test_name, mA, mB, rho, pval])
+    # Accumulate Spearman correlations
+    for (mA, mB), (rho, pval) in corrs.items():
+        all_corr_rows.append([pdb_id, mA, mB, rho, pval])
 
-# Build DataFrame of correlations
-df_all_corr = pd.DataFrame(all_corr_rows, columns=["Test","MetricA","MetricB","Rho","Pval"])
+# Build DataFrame of all correlations
+df_all_corr = pd.DataFrame(all_corr_rows,
+                           columns=["Test","MetricA","MetricB","Rho","Pval"])
+
+# ─── 3) Select widget for choosing a PDB ID ───────────────────────────────────
+
+test_options = sorted(data_by_test.keys())
+
+# Figure out which PDB ID to select by default
+if DEFAULT_TEST.upper() in test_options:
+    initial_test = DEFAULT_TEST.upper()
+elif test_options:
+    initial_test = test_options[0]
+else:
+    initial_test = ""
+
+select_test = Select(
+    title="Select Protein (PDB ID):",
+    value=initial_test,
+    options=test_options
+)
 
 ###############################################################################
 # 4) Bokeh Application
@@ -415,7 +424,7 @@ description_visualizer = Div(text="""
             <ul>
                 <li><code>Q</code>: When the protein is in its folded state, pressing <code>Q</code> will unfold the protein and represent it as a line.</li>
                 <li><code>E</code>: When the protein is in its unfolded state, pressing <code>E</code> will refold the protein back to its original structure.</li>
-                <li>In the unfolded state, the protein can be either static or oscillating (controlled by <code>O</code>). In the oscillating state, the B-factor is mapped again by the frequency and amplitude of oscillation. In the static state, the B-factor is mapped out by the height of each residue.</li>
+                <li>In the unfolded state, the protein can be either static or oscillating (controlled by O). In the oscillating state, the B-factor is mapped again by the frequency and amplitude of oscillation. In the static state, the B-factor is mapped out by the height of each residue.</li>
             </ul>
         </li>
         <li><strong>Pause:</strong> Pressing <code>P</code> pauses the visualizer and allows you to select another protein.</li>
